@@ -38,7 +38,9 @@ fn main() -> Result<(), Error> {
         Pixels::new(WIDTH, HEIGHT, surface_texture)?
     };
 
-    let mut draw_state: Option<bool> = None;
+    let mut pixpixs = vec![];
+    for _ in 0..WIDTH*HEIGHT { pixpixs.push(false); }
+    let mut world = World { pixels: pixpixs };
 
     let res = event_loop.run(|event, elwt| {
         // The one and only event that winit_input_helper doesn't have for us...
@@ -47,7 +49,7 @@ fn main() -> Result<(), Error> {
             ..
         } = event
         {
-            draw(pixels.frame_mut());
+            world.draw(pixels.frame_mut());
             if let Err(err) = pixels.render() {
                 log_error("pixels.render", err);
                 elwt.exit();
@@ -73,6 +75,29 @@ fn main() -> Result<(), Error> {
             
             if input.mouse_pressed(0) {
                 println!("Mousey-mouse!");
+                let (mouse_cell, mouse_prev_cell) = input
+                .cursor()
+                .map(|(mx, my)| {
+                    let (dx, dy) = input.cursor_diff();
+                    let prev_x = mx - dx;
+                    let prev_y = my - dy;
+
+                    let (mx_i, my_i) = pixels
+                        .window_pos_to_pixel((mx, my))
+                        .unwrap_or_else(|pos| pixels.clamp_pixel_pos(pos));
+
+                    let (px_i, py_i) = pixels
+                        .window_pos_to_pixel((prev_x, prev_y))
+                        .unwrap_or_else(|pos| pixels.clamp_pixel_pos(pos));
+
+                    (
+                        (mx_i as isize, my_i as isize),
+                        (px_i as isize, py_i as isize),
+                    )
+                }).unwrap_or_default();
+
+                let mouse_index = mouse_cell.0 as usize + mouse_cell.1 as usize * WIDTH as usize;
+                world.pixels[mouse_index] = !world.pixels[mouse_index];
             }
             // Resize the window
             if let Some(size) = input.window_resized() {
@@ -96,11 +121,18 @@ fn log_error<E: std::error::Error + 'static>(method_name: &str, err: E) {
     }
 }
 
-fn draw(screen: &mut [u8]) {
-    for i in 0..screen.len()/4 {
-        screen[i*4] = 255;
-        screen[i*4+1] = 255;
-        screen[i*4+2] = 0;
-        screen[i*4+3] = 255;
+struct World {
+    pixels: Vec<bool>
+}
+
+impl World {
+    fn draw(&self, screen: &mut [u8]) {
+        for i in 0..screen.len()/4 {
+            let color = if self.pixels[i] { 255 } else { 0 };
+            screen[i*4] = 255;
+            screen[i*4+1] = color;
+            screen[i*4+2] = color;
+            screen[i*4+3] = color;
+        }
     }
 }
