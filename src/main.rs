@@ -1,7 +1,7 @@
-mod gfx;
+mod app;
 
 use pixels::Error;
 
 fn main() -> Result<(), Error> {
-    gfx::run_loop()
+    app::run_loop()
 }
