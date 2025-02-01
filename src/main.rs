@@ -1,11 +1,25 @@
 mod app;
 
+use std::fmt;
+
+/// Error datatype
+#[derive(Debug)]
+enum Error {}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ERROR!?")
+    }
+}
+
+impl std::error::Error for Error {}
+
 /// An 8-bit unsigned integer
 #[derive(PartialEq, PartialOrd, Clone, Copy, Default)]
 pub struct Byte(u8);
 
-impl std::fmt::Debug for Byte {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Byte {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
@@ -20,8 +34,8 @@ impl Byte {
 #[derive(PartialEq, PartialOrd, Clone, Copy, Default)]
 pub struct Word(u16);
 
-impl std::fmt::Debug for Word {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Word {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
@@ -58,7 +72,12 @@ impl Registers {
     }
 }
 
+/// The size of the Game Boy's RAM in bytes
 const RAM_SIZE: usize = 64 * 1024;
+
+/// A struct representing a 16-bit address into the Game Boy's RAM
+#[derive(Copy, Clone, Debug)]
+struct Addr(u16);
 
 /// A struct representing the Game Boy's random-access memory
 #[derive(Debug)]
@@ -67,12 +86,24 @@ struct Ram {
 }
 
 impl Ram {
+    /// Returns an instance of zeroed Ram
     fn new() -> Ram {
         Ram { cells: [Byte::zero(); RAM_SIZE] }
+    }
+
+    /// Sets the byte at the specified address to the specified value
+    fn set(&mut self, address: Addr, value: Byte) {
+        self.cells[address.0 as usize] = value;
+    }
+
+    fn get(&self, address: Addr) -> Byte {
+        self.cells[address.0 as usize]
     }
 }
 
 fn main()  {
-    let r = Ram::new();
-    println!("{:?}", r)
+    let mut r = Ram::new();
+    let a = Addr(0);
+    r.set(a, Byte(17));
+    println!("{:?}", r.get(a))
 }
