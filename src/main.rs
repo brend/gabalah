@@ -14,55 +14,29 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// An 8-bit unsigned integer
-#[derive(PartialEq, PartialOrd, Clone, Copy, Default)]
-pub struct Byte(u8);
-
-impl fmt::Debug for Byte {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Byte {
-    fn zero() -> Byte {
-        Byte(0)
-    }
-}
-
-/// A 16-bit unsigned integer
-#[derive(PartialEq, PartialOrd, Clone, Copy, Default)]
-pub struct Word(u16);
-
-impl fmt::Debug for Word {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
 /// A struct representing the Game Boy's CPU registers
 #[derive(Default, Debug)]
 pub struct Registers {
     /// accumulator A
-    a: Byte,
+    a: u8,
     /// general purpose register B
-    b: Byte,
+    b: u8,
     /// general purpose register D
-    d: Byte,
+    d: u8,
     /// general purpose register H
-    h: Byte,
+    h: u8,
     /// flags register F
-    f: Byte,
+    f: u8,
     /// general purpose register C
-    c: Byte,
+    c: u8,
     /// general purpose register E
-    e: Byte,
+    e: u8,
     /// general purpose register L
-    l: Byte,
+    l: u8,
     /// stack pointer
-    sp: Word,
+    sp: u16,
     /// program counter
-    pc: Word,
+    pc: u16,
 }
 
 impl Registers {
@@ -82,21 +56,21 @@ struct Addr(u16);
 /// A struct representing the Game Boy's random-access memory
 #[derive(Debug)]
 struct Ram {
-    cells: [Byte; RAM_SIZE],
+    cells: [u8; RAM_SIZE],
 }
 
 impl Ram {
     /// Returns an instance of zeroed Ram
     fn new() -> Ram {
-        Ram { cells: [Byte::zero(); RAM_SIZE] }
+        Ram { cells: [0; RAM_SIZE] }
     }
 
     /// Sets the byte at the specified address to the specified value
-    fn set(&mut self, address: Addr, value: Byte) {
+    fn set(&mut self, address: Addr, value: u8) {
         self.cells[address.0 as usize] = value;
     }
 
-    fn get(&self, address: Addr) -> Byte {
+    fn get(&self, address: Addr) -> u8 {
         self.cells[address.0 as usize]
     }
 }
@@ -104,6 +78,6 @@ impl Ram {
 fn main()  {
     let mut r = Ram::new();
     let a = Addr(0);
-    r.set(a, Byte(17));
+    r.set(a, 17);
     println!("{:?}", r.get(a))
 }
