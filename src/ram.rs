@@ -1,3 +1,5 @@
+type Bytes = Vec<u8>;
+
 /// A struct representing the Game Boy's CPU registers
 #[derive(Default, Debug)]
 pub struct Registers {
@@ -49,6 +51,7 @@ fn word(l: u8, h: u8) -> u16 {
 pub struct Addr(pub u16);
 
 impl Addr {
+    /// Returns the byte address following this one
     pub fn next(&self) -> Option<Addr> {
         if self.0 < u16::MAX {
             Some(Addr(self.0 + 1))
@@ -57,9 +60,16 @@ impl Addr {
         }
     }
 
+    /// Increases this byte address by one
     pub fn inc(&mut self) {
         assert!(self.0 < u16::MAX);
         self.0 += 1;
+    }
+
+    /// Creates an address from two bytes
+    pub fn from_bytes(addr_bytes: Vec<u8>) -> Addr {
+        debug_assert!(addr_bytes.len() == 2);
+        Addr(word(addr_bytes[0], addr_bytes[1]))
     }
 }
 
@@ -80,10 +90,20 @@ impl Ram {
         self.cells[address.0 as usize] = value;
     }
 
+    /// Sets the word at the specified address to the specified value
+    pub fn set_word(&mut self, address: Addr, values: &Bytes) {
+        debug_assert!(values.len() == 2);
+        debug_assert!(address.0 < u16::MAX);
+        self.cells[address.0 as usize] = values[0];
+        self.cells[address.0 as usize + 1] = values[1]
+    }
+
+    /// Retrieves the byte at the specified address
     pub fn get(&self, address: Addr) -> u8 {
         self.cells[address.0 as usize]
     }
 
+    /// Retrieves the word at the specified address
     pub fn get_word(&self, address: Addr) -> Option<u16> {
         let next = address.next()?;
         Some(word(self.get(address), self.get(next)))
