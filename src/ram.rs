@@ -1,6 +1,6 @@
 type Bytes = Vec<u8>;
 
-/// A struct representing the Game Boy's CPU registers
+/// The Game Boy's CPU registers
 #[derive(Default, Debug)]
 pub struct Registers {
     /// accumulator A
@@ -46,7 +46,7 @@ fn word(l: u8, h: u8) -> u16 {
     (h as u16) << 8 | l as u16
 }
 
-/// A struct representing a 16-bit address into the Game Boy's RAM
+/// A 16-bit address into the Game Boy's RAM
 #[derive(Copy, Clone, Debug)]
 pub struct Addr(pub u16);
 
@@ -73,7 +73,7 @@ impl Addr {
     }
 }
 
-/// A struct representing the Game Boy's random-access memory
+/// The Game Boy's random-access memory
 #[derive(Debug)]
 pub struct Ram {
     cells: [u8; RAM_SIZE],
