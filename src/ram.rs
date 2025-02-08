@@ -46,6 +46,16 @@ fn word(l: u8, h: u8) -> u16 {
     (h as u16) << 8 | l as u16
 }
 
+/// Return the high byte of the provided word
+pub fn hi(word: u16) -> u8 {
+    (word >> 8) as u8
+}
+
+/// Return the low byte of the provided word
+pub fn lo(word: u16) -> u8 {
+    (word & 0x00FF) as u8
+}
+
 /// A 16-bit address into the Game Boy's RAM
 #[derive(Copy, Clone, Debug)]
 pub struct Addr(pub u16);

@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, vec};
 
 use log::debug;
 
+use crate::ram;
 use crate::ram::{Registers, Ram, Addr};
 
 type Bytes = Vec<u8>;
@@ -9,14 +10,18 @@ type Bytes = Vec<u8>;
 /// Assembly instruction mnemonics
 #[derive(Debug, Clone, Copy)]
 enum Mnemonic {
-    /// The no-operation mnemonic
+    /// The no-operation
     Nop, 
-    /// The load mnemonic
+    /// Load data into a location
     Ld,
-    /// The increase mnemonic
+    /// Increase the target
     Inc,
-    /// The decrease mnemonic
+    /// Decrease the target
     Dec,
+    /// Rotate A left and carry
+    Rlca,
+    /// Addition
+    Add,
 }
 
 /// Represents the location of an instruction's operands
@@ -38,6 +43,10 @@ enum Location {
     L,
     /// The 16-bit register BC
     BC,
+    /// The 16-bit register HL
+    HL,
+    /// The stack pointer
+    SP,
     /// An 8-bit constant value
     Const8,
     /// A 16-bit constant value
@@ -75,7 +84,9 @@ impl Location {
             Location::E => vec![registers.e],
             Location::H => vec![registers.h],
             Location::L => vec![registers.l],
-            Location::BC => vec![registers.c, registers.b],
+            Location::BC => vec![registers.c, registers.b], // TODO: is this the correct order?
+            Location::HL => vec![registers.l, registers.h], // TODO: is this the correct order?
+            Location::SP => vec![ram::lo(registers.sp), ram::hi(registers.sp)],
             Location::Const8 => vec![memory.get(Addr(registers.pc).next().unwrap())],
             Location::Const16 => {
                 let op_pointer = Addr(registers.pc).next().unwrap();
@@ -173,6 +184,12 @@ impl Instruction {
                 todo!("flags");
                 loc.write(r, m, sub(&bytes, 1));
             },
+            Mnemonic::Add => {
+                todo!()
+            },
+            Mnemonic::Rlca => {
+                todo!()
+            }
         }
     }
 }
@@ -202,45 +219,71 @@ fn sub(a: &Bytes, b: u8) -> Bytes {
 pub fn build_opcode_map() -> HashMap<u8, Instruction> {
     let mut map = HashMap::new();
 
+    // no-op
     map.insert(
         0x00,
         Instruction::new(Mnemonic::Nop, 1, 4, vec![])
     );
 
+    // load nn into BC
     map.insert(
         0x01,
         Instruction::new(Mnemonic::Ld, 3, 12, vec![Location::BC.imm(), Location::Const16.imm()])
     );
 
+    // load A into [BC]
     map.insert(
         0x02,
         Instruction::new(Mnemonic::Ld, 1, 8, vec![Location::BC.mem(), Location::A.imm()])
     );
 
+    // increase BC
     map.insert(
         0x03,
         Instruction::new(Mnemonic::Inc, 1, 8, vec![Location::BC.imm()])
     );
 
+    // increase B
     map.insert(
         0x04,
         Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::B.imm()])
     );
 
+    // decrease B
     map.insert(
         0x05,
         Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::B.imm()])
     );
 
+    // load n into B
     map.insert(
         0x06,
         Instruction::new(Mnemonic::Ld, 2, 8, vec![Location::B.imm(), Location::Const8.imm()])
     );
 
-    // map.insert(
-    //     0x07,
-    //     Instruction::new(Mnemonic::Rlca, 1, 4, vec![])
-    // );
+    // rotate A left; old bit 7 to Carry flag.
+    map.insert(
+        0x07,
+        Instruction::new(Mnemonic::Rlca, 1, 4, vec![])
+    );
+
+    // load SP into [nn]
+    map.insert(
+        0x08,
+        Instruction::new(Mnemonic::Ld, 3, 20, vec![Location::Const16.mem(), Location::SP.imm()])
+    );
+
+    // add BC to HL
+    map.insert(
+        0x09,
+        Instruction::new(Mnemonic::Add, 1, 8, vec![Location::HL.imm(), Location::BC.imm()])
+    );
+
+    // load BC into A
+    map.insert(
+        0x0A, 
+        Instruction::new(Mnemonic::Ld, 1, 8, vec![Location::A.imm(), Location::BC.mem()])
+    );
 
     map
 }
