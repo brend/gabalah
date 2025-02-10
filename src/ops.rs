@@ -34,6 +34,8 @@ enum Mnemonic {
     Rra,
 }
 
+use Mnemonic::*;
+
 /// Represents the location of an instruction's operands
 #[derive(Debug, Clone, Copy)]
 enum Location {
@@ -67,6 +69,8 @@ enum Location {
     Nz,
 }
 
+use Location::*;
+
 impl Location {
     /// Creates an immediate value operand from the location
     fn imm(&self) -> Operand {
@@ -82,8 +86,8 @@ impl Location {
     fn write(&self, registers: &mut Registers, memory: &mut Ram, values: Bytes) {
         debug!("writing [{}] to {:?}", values.iter().map(|n|n.to_string()).collect::<Vec<String>>().join(", "), self);
         match self {
-            Location::A => registers.a = values[0],
-            Location::BC => registers.set_bc(values[0], values[1]),
+            A => registers.a = values[0],
+            BC => registers.set_bc(values[0], values[1]),
             _ => panic!()
         }
     }
@@ -91,23 +95,23 @@ impl Location {
     /// Reads from the location
     fn read(&self, registers: &Registers, memory: &Ram) -> Bytes {
         match self {
-            Location::A => vec![registers.a],
-            Location::B => vec![registers.b],
-            Location::C => vec![registers.c],
-            Location::D => vec![registers.d],
-            Location::E => vec![registers.e],
-            Location::H => vec![registers.h],
-            Location::L => vec![registers.l],
-            Location::BC => vec![registers.c, registers.b], // TODO: is this the correct order?
-            Location::HL => vec![registers.l, registers.h], // TODO: is this the correct order?
-            Location::DE => vec![registers.e, registers.d], // TODO: is this the correct order?
-            Location::SP => vec![ram::lo(registers.sp), ram::hi(registers.sp)],
-            Location::Const8 => vec![memory.get(Addr(registers.pc).next().unwrap())],
-            Location::Const16 => {
+            A => vec![registers.a],
+            B => vec![registers.b],
+            C => vec![registers.c],
+            D => vec![registers.d],
+            E => vec![registers.e],
+            H => vec![registers.h],
+            L => vec![registers.l],
+            BC => vec![registers.c, registers.b], // TODO: is this the correct order?
+            HL => vec![registers.l, registers.h], // TODO: is this the correct order?
+            DE => vec![registers.e, registers.d], // TODO: is this the correct order?
+            SP => vec![ram::lo(registers.sp), ram::hi(registers.sp)],
+            Const8 => vec![memory.get(Addr(registers.pc).next().unwrap())],
+            Const16 => {
                 let op_pointer = Addr(registers.pc).next().unwrap();
                 vec![memory.get(op_pointer), memory.get(op_pointer.next().unwrap())]
             },
-            Location::Nz => vec![if (registers.f & (1 << 7)) != 0 { 0x01 } else { 0x00 }],
+            Nz => vec![if (registers.f & (1 << 7)) != 0 { 0x01 } else { 0x00 }],
         }
     }
 }
@@ -184,37 +188,38 @@ impl Instruction {
     /// Executes the instruction, modifying the state of the CPU
     pub fn execute(&self, m: &mut Ram, r: &mut Registers) {
         match self.mnemonic {
-            Mnemonic::Nop => (),
-            Mnemonic::Ld => {
+            Nop => (),
+            Ld => {
                 debug_assert!(self.operands.len() == 2, "ld instruction requires 2 operands");
                 let dst = self.operands[0];
                 let src = self.operands[1];
                 dst.write(r, m, src.read(r, m));
             },
-            Mnemonic::Inc => {
+            Inc => {
                 debug_assert!(self.operands.len() == 1, "inc instruction requires 1 operand");
                 let loc = self.operands[0];
                 let bytes = loc.read(r, m);
                 todo!("flags");
                 loc.write(r, m, add(&bytes, 1));
             }
-            Mnemonic::Dec => {
+            Dec => {
                 debug_assert!(self.operands.len() == 1, "dec instruction requires 1 operand");
                 let loc = self.operands[0];
                 let bytes = loc.read(r, m);
                 todo!("flags");
                 loc.write(r, m, sub(&bytes, 1));
             },
-            Mnemonic::Add => {
+            Add => {
                 todo!()
             },
-            Mnemonic::Rlca => {
+            Rlca => {
                 todo!()
             },
-            Mnemonic::Rrca => todo!(),
-            Mnemonic::Stop => todo!(),
-            Mnemonic::Rla => todo!(),
-            Mnemonic::Jr => todo!(),
+            Rrca => todo!(),
+            Stop => todo!(),
+            Rla => todo!(),
+            Jr => todo!(),
+            Rra => todo!(),
         }
     }
 }
@@ -247,206 +252,209 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
     // no-op
     map.insert(
         0x00,
-        Instruction::new(Mnemonic::Nop, 1, 4, vec![])
+        Instruction::new(Nop, 1, 4, vec![])
     );
 
     // load nn into BC
     map.insert(
         0x01,
-        Instruction::new(Mnemonic::Ld, 3, 12, vec![Location::BC.imm(), Location::Const16.imm()])
+        Instruction::new(Ld, 3, 12, vec![BC.imm(), Const16.imm()])
     );
 
     // load A into [BC]
     map.insert(
         0x02,
-        Instruction::new(Mnemonic::Ld, 1, 8, vec![Location::BC.mem(), Location::A.imm()])
+        Instruction::new(Ld, 1, 8, vec![BC.mem(), A.imm()])
     );
 
     // increase BC
     map.insert(
         0x03,
-        Instruction::new(Mnemonic::Inc, 1, 8, vec![Location::BC.imm()])
+        Instruction::new(Inc, 1, 8, vec![BC.imm()])
     );
 
     // increase B
     map.insert(
         0x04,
-        Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::B.imm()])
+        Instruction::new(Inc, 1, 4, vec![B.imm()])
     );
 
     // decrease B
     map.insert(
         0x05,
-        Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::B.imm()])
+        Instruction::new(Dec, 1, 4, vec![B.imm()])
     );
 
     // load n into B
     map.insert(
         0x06,
-        Instruction::new(Mnemonic::Ld, 2, 8, vec![Location::B.imm(), Location::Const8.imm()])
+        Instruction::new(Ld, 2, 8, vec![B.imm(), Const8.imm()])
     );
 
     // rotate A left; old bit 7 to Carry flag.
     map.insert(
         0x07,
-        Instruction::new(Mnemonic::Rlca, 1, 4, vec![])
+        Instruction::new(Rlca, 1, 4, vec![])
     );
 
     // load SP into [nn]
     map.insert(
         0x08,
-        Instruction::new(Mnemonic::Ld, 3, 20, vec![Location::Const16.mem(), Location::SP.imm()])
+        Instruction::new(Ld, 3, 20, vec![Const16.mem(), SP.imm()])
     );
 
     // add BC to HL
     map.insert(
         0x09,
-        Instruction::new(Mnemonic::Add, 1, 8, vec![Location::HL.imm(), Location::BC.imm()])
+        Instruction::new(Add, 1, 8, vec![HL.imm(), BC.imm()])
     );
 
     // load BC into A
     map.insert(
         0x0A, 
-        Instruction::new(Mnemonic::Ld, 1, 8, vec![Location::A.imm(), Location::BC.mem()])
+        Instruction::new(Ld, 1, 8, vec![A.imm(), BC.mem()])
     );
 
     // decrease BC
     map.insert(
         0x0B, 
-        Instruction::new(Mnemonic::Dec, 1, 8, vec![Location::BC.imm()])
+        Instruction::new(Dec, 1, 8, vec![BC.imm()])
     );
 
     // increase C
     map.insert(
         0x0C,
-        Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::C.imm()])
+        Instruction::new(Inc, 1, 4, vec![C.imm()])
     );
 
     // decrease C
     map.insert(
         0x0D,
-        Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::C.imm()])
+        Instruction::new(Dec, 1, 4, vec![C.imm()])
     );
 
     // load n into C
     map.insert(
         0x0E,
-        Instruction::new(Mnemonic::Ld, 2, 8, vec![Location::C.imm(), Location::Const8.imm()])
+        Instruction::new(Ld, 2, 8, vec![C.imm(), Const8.imm()])
     );
 
     // rotate A right; old bit 0 to Carry flag
     map.insert(
         0x0F, 
-        Instruction::new(Mnemonic::Rrca, 1, 4, vec![])
+        Instruction::new(Rrca, 1, 4, vec![])
     );
 
     // stop
     map.insert(
         0x10,
-        Instruction::new(Mnemonic::Stop, 2, 4, vec![Location::Const8.imm()])
+        Instruction::new(Stop, 2, 4, vec![Const8.imm()])
     );
 
     // load nn into DE
     map.insert(
         0x11,
-        Instruction::new(Mnemonic::Ld, 3, 12, vec![Location::DE.imm(), Location::Const16.imm()])
+        Instruction::new(Ld, 3, 12, vec![DE.imm(), Const16.imm()])
     );
 
     // load A into [DE]
     map.insert(
         0x12,
-        Instruction::new(Mnemonic::Ld, 1, 8, vec![Location::DE.mem(), Location::A.imm()])
+        Instruction::new(Ld, 1, 8, vec![DE.mem(), A.imm()])
     );
 
     // increase DE
     map.insert(
         0x13,
-        Instruction::new(Mnemonic::Inc, 1, 8, vec![Location::DE.imm()])
+        Instruction::new(Inc, 1, 8, vec![DE.imm()])
     );
 
     // increase D
     map.insert(
         0x14,
-        Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::D.imm()])
+        Instruction::new(Inc, 1, 4, vec![D.imm()])
     );
 
     // decrease D
     map.insert(
         0x15,
-        Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::D.imm()])
+        Instruction::new(Dec, 1, 4, vec![D.imm()])
     );
 
     // load n into D
     map.insert(
         0x16,
-        Instruction::new(Mnemonic::Ld, 2, 6, vec![Location::D.imm(), Location::Const8.imm()])
+        Instruction::new(Ld, 2, 6, vec![D.imm(), Const8.imm()])
     );
 
     // rotate A left through Carry flag
     map.insert(
         0x17, 
-        Instruction::new(Mnemonic::Rla, 1, 4, vec![])
+        Instruction::new(Rla, 1, 4, vec![])
     );
 
     // jump relative
     map.insert(
         0x18,
-        Instruction::new(Mnemonic::Jr, 2, 12, vec![Location::Const8.imm()])
+        Instruction::new(Jr, 2, 12, vec![Const8.imm()])
     );
 
     // add DE to HL
     map.insert(
         0x19,
-        Instruction::new(Mnemonic::Add, 1, 8, vec![Location::HL.imm(), Location::DE.imm()])
+        Instruction::new(Add, 1, 8, vec![HL.imm(), DE.imm()])
     );
 
     // load [DE] into A
     map.insert(
         0x1A, 
-        Instruction::new(Mnemonic::Ld, 1, 8, vec![Location::A.imm(), Location::DE.mem()])
+        Instruction::new(Ld, 1, 8, vec![A.imm(), DE.mem()])
     );
 
     // decrease DE
     map.insert(
         0x1B, 
-        Instruction::new(Mnemonic::Dec, 1, 8, vec![Location::DE.imm()])
+        Instruction::new(Dec, 1, 8, vec![DE.imm()])
     );
 
     // increase E
     map.insert(
         0x1C,
-        Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::E.imm()])
+        Instruction::new(Inc, 1, 4, vec![E.imm()])
     );
 
     // decrease E
     map.insert(
         0x1D,
-        Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::E.imm()])
+        Instruction::new(Dec, 1, 4, vec![E.imm()])
     );
 
     // load n into E
     map.insert(
         0x1E,
-        Instruction::new(Mnemonic::Ld, 2, 8, vec![Location::E.imm(), Location::Const8.imm()])
+        Instruction::new(Ld, 2, 8, vec![E.imm(), Const8.imm()])
     );
 
     // rotate A right through Carry flag
     map.insert(
         0x1F,
-        Instruction::new(Mnemonic::Rra, 1, 4, vec![])
+        Instruction::new(Rra, 1, 4, vec![])
     );
 
     // jump relative if non-zero
     map.insert(
         0x20,
-        Instruction::new_ex(Mnemonic::Jr, 2, vec![12, 8], vec![Location::Nz.imm(), Location::Const8.imm()])
+        Instruction::new_ex(Jr, 2, vec![12, 8], vec![Nz.imm(), Const8.imm()])
     );
 
     // load nn into HL
     map.insert(
         0x21,
-        Instruction::new(Mnemonic::Ld, 3, 12, vec![Location::HL.imm(), Location::Const16.imm()])
+        Instruction::new(Ld, 3, 12, vec![HL.imm(), Const16.imm()])
     );
+
+    // load A into [HL]. Increment HL
+    // TODO: invent a way to implement this -- new type of operand maybe?
 
     map
 }
