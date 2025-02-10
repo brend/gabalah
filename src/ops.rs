@@ -177,7 +177,7 @@ impl Instruction {
 
     /// Creates a new instruction
     fn new(mnemonic: Mnemonic, bytes: usize, cycles: usize, operands: Vec<Operand>) -> Instruction {
-        Instruction::new_ex(mnemonic, bytes, vec![cycles], operands)
+        I::new_ex(mnemonic, bytes, vec![cycles], operands)
     }
 
     /// Decodes an instruction from its opcode and the provided opcode map
@@ -245,216 +245,116 @@ fn sub(a: &Bytes, b: u8) -> Bytes {
     todo!()
 }
 
+type I = Instruction;
+
 /// Builds and returns a mapping of the 8-bit opcodes to instruction instances
 pub fn build_opcode_map() -> HashMap<u8, Instruction> {
-    let mut map = HashMap::new();
+    let map: HashMap<u8, Instruction> = HashMap::from_iter([
+        // no-op
+        (0x00, I::new(Nop, 1, 4, vec![])), 
 
-    // no-op
-    map.insert(
-        0x00,
-        Instruction::new(Nop, 1, 4, vec![])
-    );
+        // load nn into BC
+        (0x01, I::new(Ld, 3, 12, vec![BC.imm(), Const16.imm()])), 
 
-    // load nn into BC
-    map.insert(
-        0x01,
-        Instruction::new(Ld, 3, 12, vec![BC.imm(), Const16.imm()])
-    );
+        // load A into [BC]
+        (0x02, I::new(Ld, 1, 8, vec![BC.mem(), A.imm()])), 
 
-    // load A into [BC]
-    map.insert(
-        0x02,
-        Instruction::new(Ld, 1, 8, vec![BC.mem(), A.imm()])
-    );
+        // increase BC
+        (0x03, I::new(Inc, 1, 8, vec![BC.imm()])), 
 
-    // increase BC
-    map.insert(
-        0x03,
-        Instruction::new(Inc, 1, 8, vec![BC.imm()])
-    );
+        // increase B
+        (0x04, I::new(Inc, 1, 4, vec![B.imm()])), 
 
-    // increase B
-    map.insert(
-        0x04,
-        Instruction::new(Inc, 1, 4, vec![B.imm()])
-    );
+        // decrease B
+        (0x05, I::new(Dec, 1, 4, vec![B.imm()])), 
 
-    // decrease B
-    map.insert(
-        0x05,
-        Instruction::new(Dec, 1, 4, vec![B.imm()])
-    );
+        // load n into B
+        (0x06, I::new(Ld, 2, 8, vec![B.imm(), Const8.imm()])), 
 
-    // load n into B
-    map.insert(
-        0x06,
-        Instruction::new(Ld, 2, 8, vec![B.imm(), Const8.imm()])
-    );
+        // rotate A left; old bit 7 to Carry flag.
+        (0x07, I::new(Rlca, 1, 4, vec![])), 
 
-    // rotate A left; old bit 7 to Carry flag.
-    map.insert(
-        0x07,
-        Instruction::new(Rlca, 1, 4, vec![])
-    );
+        // load SP into [nn]
+        (0x08, I::new(Ld, 3, 20, vec![Const16.mem(), SP.imm()])), 
 
-    // load SP into [nn]
-    map.insert(
-        0x08,
-        Instruction::new(Ld, 3, 20, vec![Const16.mem(), SP.imm()])
-    );
+        // add BC to HL
+        (0x09, I::new(Add, 1, 8, vec![HL.imm(), BC.imm()])), 
 
-    // add BC to HL
-    map.insert(
-        0x09,
-        Instruction::new(Add, 1, 8, vec![HL.imm(), BC.imm()])
-    );
+        // load BC into A
+        (0x0A, I::new(Ld, 1, 8, vec![A.imm(), BC.mem()])),
 
-    // load BC into A
-    map.insert(
-        0x0A, 
-        Instruction::new(Ld, 1, 8, vec![A.imm(), BC.mem()])
-    );
+        // decrease BC
+        (0x0B, I::new(Dec, 1, 8, vec![BC.imm()])),
 
-    // decrease BC
-    map.insert(
-        0x0B, 
-        Instruction::new(Dec, 1, 8, vec![BC.imm()])
-    );
+        // increase C
+        (0x0C, I::new(Inc, 1, 4, vec![C.imm()])),
 
-    // increase C
-    map.insert(
-        0x0C,
-        Instruction::new(Inc, 1, 4, vec![C.imm()])
-    );
+        // decrease C
+        (0x0D, I::new(Dec, 1, 4, vec![C.imm()])),
 
-    // decrease C
-    map.insert(
-        0x0D,
-        Instruction::new(Dec, 1, 4, vec![C.imm()])
-    );
+        // load n into C
+        (0x0E, I::new(Ld, 2, 8, vec![C.imm(), Const8.imm()])),
 
-    // load n into C
-    map.insert(
-        0x0E,
-        Instruction::new(Ld, 2, 8, vec![C.imm(), Const8.imm()])
-    );
+        // rotate A right; old bit 0 to Carry flag
+        (0x0F, I::new(Rrca, 1, 4, vec![])),
 
-    // rotate A right; old bit 0 to Carry flag
-    map.insert(
-        0x0F, 
-        Instruction::new(Rrca, 1, 4, vec![])
-    );
+        // stop
+        (0x10, I::new(Stop, 2, 4, vec![Const8.imm()])), 
 
-    // stop
-    map.insert(
-        0x10,
-        Instruction::new(Stop, 2, 4, vec![Const8.imm()])
-    );
+        // load nn into DE
+        (0x11, I::new(Ld, 3, 12, vec![DE.imm(), Const16.imm()])), 
 
-    // load nn into DE
-    map.insert(
-        0x11,
-        Instruction::new(Ld, 3, 12, vec![DE.imm(), Const16.imm()])
-    );
+        // load A into [DE]
+        (0x12, I::new(Ld, 1, 8, vec![DE.mem(), A.imm()])), 
 
-    // load A into [DE]
-    map.insert(
-        0x12,
-        Instruction::new(Ld, 1, 8, vec![DE.mem(), A.imm()])
-    );
+        // increase DE
+        (0x13, I::new(Inc, 1, 8, vec![DE.imm()])), 
 
-    // increase DE
-    map.insert(
-        0x13,
-        Instruction::new(Inc, 1, 8, vec![DE.imm()])
-    );
+        // increase D
+        (0x14, I::new(Inc, 1, 4, vec![D.imm()])), 
 
-    // increase D
-    map.insert(
-        0x14,
-        Instruction::new(Inc, 1, 4, vec![D.imm()])
-    );
+        // decrease D
+        (0x15, I::new(Dec, 1, 4, vec![D.imm()])), 
 
-    // decrease D
-    map.insert(
-        0x15,
-        Instruction::new(Dec, 1, 4, vec![D.imm()])
-    );
+        // load n into D
+        (0x16, I::new(Ld, 2, 6, vec![D.imm(), Const8.imm()])),
 
-    // load n into D
-    map.insert(
-        0x16,
-        Instruction::new(Ld, 2, 6, vec![D.imm(), Const8.imm()])
-    );
+        // rotate A left through Carry flag
+        (0x17, I::new(Rla, 1, 4, vec![])),
 
-    // rotate A left through Carry flag
-    map.insert(
-        0x17, 
-        Instruction::new(Rla, 1, 4, vec![])
-    );
+        // jump relative
+        (0x18, I::new(Jr, 2, 12, vec![Const8.imm()])), 
 
-    // jump relative
-    map.insert(
-        0x18,
-        Instruction::new(Jr, 2, 12, vec![Const8.imm()])
-    );
+        // add DE to HL
+        (0x19, I::new(Add, 1, 8, vec![HL.imm(), DE.imm()])), 
 
-    // add DE to HL
-    map.insert(
-        0x19,
-        Instruction::new(Add, 1, 8, vec![HL.imm(), DE.imm()])
-    );
+        // load [DE] into A
+        (0x1A, I::new(Ld, 1, 8, vec![A.imm(), DE.mem()])),
 
-    // load [DE] into A
-    map.insert(
-        0x1A, 
-        Instruction::new(Ld, 1, 8, vec![A.imm(), DE.mem()])
-    );
+        // decrease DE
+        (0x1B, I::new(Dec, 1, 8, vec![DE.imm()])),
 
-    // decrease DE
-    map.insert(
-        0x1B, 
-        Instruction::new(Dec, 1, 8, vec![DE.imm()])
-    );
+        // increase E
+        (0x1C, I::new(Inc, 1, 4, vec![E.imm()])),
 
-    // increase E
-    map.insert(
-        0x1C,
-        Instruction::new(Inc, 1, 4, vec![E.imm()])
-    );
+        // decrease E
+        (0x1D, I::new(Dec, 1, 4, vec![E.imm()])),
 
-    // decrease E
-    map.insert(
-        0x1D,
-        Instruction::new(Dec, 1, 4, vec![E.imm()])
-    );
+        // load n into E
+        (0x1E, I::new(Ld, 2, 8, vec![E.imm(), Const8.imm()])),
 
-    // load n into E
-    map.insert(
-        0x1E,
-        Instruction::new(Ld, 2, 8, vec![E.imm(), Const8.imm()])
-    );
+        // rotate A right through Carry flag
+        (0x1F, I::new(Rra, 1, 4, vec![])),
 
-    // rotate A right through Carry flag
-    map.insert(
-        0x1F,
-        Instruction::new(Rra, 1, 4, vec![])
-    );
+        // jump relative if non-zero
+        (0x20, I::new_ex(Jr, 2, vec![12, 8], vec![Nz.imm(), Const8.imm()])), 
 
-    // jump relative if non-zero
-    map.insert(
-        0x20,
-        Instruction::new_ex(Jr, 2, vec![12, 8], vec![Nz.imm(), Const8.imm()])
-    );
+        // load nn into HL
+        (0x21, I::new(Ld, 3, 12, vec![HL.imm(), Const16.imm()])),
 
-    // load nn into HL
-    map.insert(
-        0x21,
-        Instruction::new(Ld, 3, 12, vec![HL.imm(), Const16.imm()])
-    );
-
-    // load A into [HL]. Increment HL
-    // TODO: invent a way to implement this -- new type of operand maybe?
+        // load A into [HL]. Increment HL
+        // TODO: invent a way to implement this -- new type of operand maybe?
+    ]);
 
     map
 }
