@@ -1,8 +1,6 @@
 use std::{collections::HashMap, vec};
 
 use log::debug;
-use pixels::wgpu::core::instance;
-use pixels::wgpu::hal::InstanceError;
 
 use crate::ram;
 use crate::ram::{Registers, Ram, Addr};
@@ -32,6 +30,8 @@ enum Mnemonic {
     Rla,
     /// Jump relative
     Jr,
+    /// Rotate A right through Carry flag,
+    Rra,
 }
 
 /// Represents the location of an instruction's operands
@@ -63,6 +63,8 @@ enum Location {
     Const8,
     /// A 16-bit constant value
     Const16,
+    /// Nonzero flag
+    Nz,
 }
 
 impl Location {
@@ -105,6 +107,7 @@ impl Location {
                 let op_pointer = Addr(registers.pc).next().unwrap();
                 vec![memory.get(op_pointer), memory.get(op_pointer.next().unwrap())]
             },
+            Location::Nz => vec![if (registers.f & (1 << 7)) != 0 { 0x01 } else { 0x00 }],
         }
     }
 }
@@ -152,20 +155,25 @@ pub struct Instruction {
     /// The length of the instruction in bytes
     pub bytes: usize,
     /// The duration of the instruction in CPU cycles
-    _cycles: usize,
+    _cycles: Vec<usize>,
     /// The operands of the instruction
     operands: Vec<Operand>,
 }
 
 impl Instruction {
-    /// Creates a new instruction
-    fn new(mnemonic: Mnemonic, bytes: usize, cycles: usize, operands: Vec<Operand>) -> Instruction {
+    /// Creates a new instruction with extended parameters
+    fn new_ex(mnemonic: Mnemonic, bytes: usize, cycles: Vec<usize>, operands: Vec<Operand>) -> Instruction {
         Instruction {
             mnemonic, 
             bytes,
             _cycles: cycles,
             operands,
         }
+    }
+
+    /// Creates a new instruction
+    fn new(mnemonic: Mnemonic, bytes: usize, cycles: usize, operands: Vec<Operand>) -> Instruction {
+        Instruction::new_ex(mnemonic, bytes, vec![cycles], operands)
     }
 
     /// Decodes an instruction from its opcode and the provided opcode map
@@ -402,6 +410,42 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
     map.insert(
         0x1B, 
         Instruction::new(Mnemonic::Dec, 1, 8, vec![Location::DE.imm()])
+    );
+
+    // increase E
+    map.insert(
+        0x1C,
+        Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::E.imm()])
+    );
+
+    // decrease E
+    map.insert(
+        0x1D,
+        Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::E.imm()])
+    );
+
+    // load n into E
+    map.insert(
+        0x1E,
+        Instruction::new(Mnemonic::Ld, 2, 8, vec![Location::E.imm(), Location::Const8.imm()])
+    );
+
+    // rotate A right through Carry flag
+    map.insert(
+        0x1F,
+        Instruction::new(Mnemonic::Rra, 1, 4, vec![])
+    );
+
+    // jump relative if non-zero
+    map.insert(
+        0x20,
+        Instruction::new_ex(Mnemonic::Jr, 2, vec![12, 8], vec![Location::Nz.imm(), Location::Const8.imm()])
+    );
+
+    // load nn into HL
+    map.insert(
+        0x21,
+        Instruction::new(Mnemonic::Ld, 3, 12, vec![Location::HL.imm(), Location::Const16.imm()])
     );
 
     map
