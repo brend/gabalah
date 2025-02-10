@@ -1,6 +1,8 @@
 use std::{collections::HashMap, vec};
 
 use log::debug;
+use pixels::wgpu::core::instance;
+use pixels::wgpu::hal::InstanceError;
 
 use crate::ram;
 use crate::ram::{Registers, Ram, Addr};
@@ -12,6 +14,8 @@ type Bytes = Vec<u8>;
 enum Mnemonic {
     /// The no-operation
     Nop, 
+    /// Stop
+    Stop,
     /// Load data into a location
     Ld,
     /// Increase the target
@@ -20,8 +24,14 @@ enum Mnemonic {
     Dec,
     /// Rotate A left and carry
     Rlca,
+    /// Rotate A right; old bit 0 to Carry flag
+    Rrca,
     /// Addition
     Add,
+    /// Rotate A left through Carry flag
+    Rla,
+    /// Jump relative
+    Jr,
 }
 
 /// Represents the location of an instruction's operands
@@ -45,6 +55,8 @@ enum Location {
     BC,
     /// The 16-bit register HL
     HL,
+    /// The 16-bit register DE
+    DE,
     /// The stack pointer
     SP,
     /// An 8-bit constant value
@@ -86,6 +98,7 @@ impl Location {
             Location::L => vec![registers.l],
             Location::BC => vec![registers.c, registers.b], // TODO: is this the correct order?
             Location::HL => vec![registers.l, registers.h], // TODO: is this the correct order?
+            Location::DE => vec![registers.e, registers.d], // TODO: is this the correct order?
             Location::SP => vec![ram::lo(registers.sp), ram::hi(registers.sp)],
             Location::Const8 => vec![memory.get(Addr(registers.pc).next().unwrap())],
             Location::Const16 => {
@@ -189,7 +202,11 @@ impl Instruction {
             },
             Mnemonic::Rlca => {
                 todo!()
-            }
+            },
+            Mnemonic::Rrca => todo!(),
+            Mnemonic::Stop => todo!(),
+            Mnemonic::Rla => todo!(),
+            Mnemonic::Jr => todo!(),
         }
     }
 }
@@ -283,6 +300,108 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
     map.insert(
         0x0A, 
         Instruction::new(Mnemonic::Ld, 1, 8, vec![Location::A.imm(), Location::BC.mem()])
+    );
+
+    // decrease BC
+    map.insert(
+        0x0B, 
+        Instruction::new(Mnemonic::Dec, 1, 8, vec![Location::BC.imm()])
+    );
+
+    // increase C
+    map.insert(
+        0x0C,
+        Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::C.imm()])
+    );
+
+    // decrease C
+    map.insert(
+        0x0D,
+        Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::C.imm()])
+    );
+
+    // load n into C
+    map.insert(
+        0x0E,
+        Instruction::new(Mnemonic::Ld, 2, 8, vec![Location::C.imm(), Location::Const8.imm()])
+    );
+
+    // rotate A right; old bit 0 to Carry flag
+    map.insert(
+        0x0F, 
+        Instruction::new(Mnemonic::Rrca, 1, 4, vec![])
+    );
+
+    // stop
+    map.insert(
+        0x10,
+        Instruction::new(Mnemonic::Stop, 2, 4, vec![Location::Const8.imm()])
+    );
+
+    // load nn into DE
+    map.insert(
+        0x11,
+        Instruction::new(Mnemonic::Ld, 3, 12, vec![Location::DE.imm(), Location::Const16.imm()])
+    );
+
+    // load A into [DE]
+    map.insert(
+        0x12,
+        Instruction::new(Mnemonic::Ld, 1, 8, vec![Location::DE.mem(), Location::A.imm()])
+    );
+
+    // increase DE
+    map.insert(
+        0x13,
+        Instruction::new(Mnemonic::Inc, 1, 8, vec![Location::DE.imm()])
+    );
+
+    // increase D
+    map.insert(
+        0x14,
+        Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::D.imm()])
+    );
+
+    // decrease D
+    map.insert(
+        0x15,
+        Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::D.imm()])
+    );
+
+    // load n into D
+    map.insert(
+        0x16,
+        Instruction::new(Mnemonic::Ld, 2, 6, vec![Location::D.imm(), Location::Const8.imm()])
+    );
+
+    // rotate A left through Carry flag
+    map.insert(
+        0x17, 
+        Instruction::new(Mnemonic::Rla, 1, 4, vec![])
+    );
+
+    // jump relative
+    map.insert(
+        0x18,
+        Instruction::new(Mnemonic::Jr, 2, 12, vec![Location::Const8.imm()])
+    );
+
+    // add DE to HL
+    map.insert(
+        0x19,
+        Instruction::new(Mnemonic::Add, 1, 8, vec![Location::HL.imm(), Location::DE.imm()])
+    );
+
+    // load [DE] into A
+    map.insert(
+        0x1A, 
+        Instruction::new(Mnemonic::Ld, 1, 8, vec![Location::A.imm(), Location::DE.mem()])
+    );
+
+    // decrease DE
+    map.insert(
+        0x1B, 
+        Instruction::new(Mnemonic::Dec, 1, 8, vec![Location::DE.imm()])
     );
 
     map
