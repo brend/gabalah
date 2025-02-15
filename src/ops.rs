@@ -129,6 +129,15 @@ enum Location {
 use Location::*;
 
 impl Location {
+    /// Returns the number of bytes the location occupies
+    fn bytes(&self) -> usize {
+        match self {
+            A | B | C | D | E | H | L | FlagNz | FlagZ | FlagNc | FlagC => 1,
+            BC | HL | DE | SP | Const8 => 2,
+            AF | Const16 => 2,
+        }
+    }
+
     /// Creates an immediate value operand from the location
     fn imm(&self) -> Operand {
         Operand::Immediate(*self)
@@ -205,6 +214,14 @@ enum Operand {
 }
 
 impl Operand {
+    fn bytes(&self) -> usize {
+        match self {
+            Operand::Immediate(location) => location.bytes(),
+            Operand::Memory(_) => 2,
+            Operand::HighMemory(_) => 2,
+        }
+    }
+
     /// Reads the location represented by the operand
     fn read(&self, registers: &Registers, memory: &Ram) -> Bytes {
         match self {
@@ -292,6 +309,7 @@ impl Instruction {
                 );
                 let dst = self.operands[0];
                 let src = self.operands[1];
+                debug_assert!(dst.bytes() == src.bytes(), "operands must be the same size");
                 dst.write(r, m, src.read(r, m));
             }
             Inc => {
