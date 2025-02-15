@@ -1,4 +1,62 @@
-type Bytes = Vec<u8>;
+
+#[derive(Debug, Clone, Copy)]
+pub enum Bytes {
+    One(u8),
+    Two(u16),
+}
+
+impl From<u8> for Bytes {
+    fn from(value: u8) -> Self {
+        Bytes::One(value)
+    }
+}
+
+impl From<u16> for Bytes {
+    fn from(value: u16) -> Self {
+        Bytes::Two(value)
+    }
+}
+
+impl Bytes {
+    pub fn from_bytes(lo: u8, hi: u8) -> Self {
+        Bytes::Two((hi as u16) << 8 | lo as u16)
+    }
+
+    pub fn single(&self) -> Option<u8> {
+        match self {
+            Bytes::One(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    pub fn is_one(&self) -> bool {
+        match self {
+            Bytes::One(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_two(&self) -> bool {
+        match self {
+            Bytes::Two(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn lo(&self) -> u8 {
+        match self {
+            Bytes::Two(value) => lo(*value),
+            _ => panic!("Expected a 16-bit value"),
+        }
+    }
+
+    pub fn hi(&self) -> u8 {
+        match self {
+            Bytes::Two(value) => hi(*value),
+            _ => panic!("Expected a 16-bit value"),
+        }
+    }
+}
 
 /// The contents of the flags register F 
 /// in structured form
@@ -42,9 +100,9 @@ impl Registers {
     }
 
     /// sets the value of the 16-bit BC register
-    pub fn set_bc(&mut self, lo: u8, hi: u8) {
-        self.c = lo;
-        self.b = hi;
+    pub fn set_bc(&mut self, bytes: &Bytes) {
+        self.c = bytes.lo();
+        self.b = bytes.hi();
     }
 
     /// returns the flags register
@@ -112,11 +170,11 @@ impl Addr {
         assert!(self.0 < u16::MAX);
         self.0 += 1;
     }
+}
 
-    /// Creates an address from two bytes
-    pub fn from_bytes(addr_bytes: Vec<u8>) -> Addr {
-        debug_assert!(addr_bytes.len() == 2);
-        Addr(word(addr_bytes[0], addr_bytes[1]))
+impl From<Bytes> for Addr {
+    fn from(bytes: Bytes) -> Self {
+        Addr((bytes.hi() as u16) << 8 | bytes.lo() as u16)
     }
 }
 
@@ -139,10 +197,10 @@ impl Ram {
 
     /// Sets the word at the specified address to the specified value
     pub fn set_word(&mut self, address: Addr, values: &Bytes) {
-        debug_assert!(values.len() == 2);
+        debug_assert!(values.is_two());
         debug_assert!(address.0 < u16::MAX);
-        self.cells[address.0 as usize] = values[0];
-        self.cells[address.0 as usize + 1] = values[1]
+        self.cells[address.0 as usize] = values.lo();
+        self.cells[address.0 as usize + 1] = values.hi();
     }
 
     /// Retrieves the byte at the specified address

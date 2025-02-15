@@ -3,9 +3,7 @@ use std::{collections::HashMap, vec};
 use log::debug;
 
 use crate::ram;
-use crate::ram::{Addr, Ram, Registers, Flags};
-
-type Bytes = Vec<u8>;
+use crate::ram::{Addr, Ram, Registers, Flags, Bytes};
 
 const ZERO_FLAG_BITMASK: u8 = 1 << 7;
 const SUBTRACTION_FLAG_BITMASK: u8 = 1 << 6;
@@ -156,17 +154,13 @@ impl Location {
     /// Writes to the location
     fn write(&self, registers: &mut Registers, memory: &mut Ram, values: Bytes) {
         debug!(
-            "writing [{}] to {:?}",
-            values
-                .iter()
-                .map(|n| n.to_string())
-                .collect::<Vec<String>>()
-                .join(", "),
+            "writing [{:?}] to {:?}",
+            values,
             self
         );
         match self {
-            A => registers.a = values[0],
-            BC => registers.set_bc(values[0], values[1]),
+            A => registers.a = values.single().expect("expected single byte"),
+            BC => registers.set_bc(&values),
             _ => panic!(),
         }
     }
@@ -174,30 +168,30 @@ impl Location {
     /// Reads from the location
     fn read(&self, registers: &Registers, memory: &Ram) -> Bytes {
         match self {
-            A => vec![registers.a],
-            B => vec![registers.b],
-            C => vec![registers.c],
-            D => vec![registers.d],
-            E => vec![registers.e],
-            H => vec![registers.h],
-            L => vec![registers.l],
-            AF => vec![registers.f, registers.a], // TODO: is this the correct order?
-            BC => vec![registers.c, registers.b], // TODO: is this the correct order?
-            HL => vec![registers.l, registers.h], // TODO: is this the correct order?
-            DE => vec![registers.e, registers.d], // TODO: is this the correct order?
-            SP => vec![ram::lo(registers.sp), ram::hi(registers.sp)],
-            Const8 => vec![memory.get(Addr(registers.pc).next().unwrap())],
+            A => registers.a.into(),
+            B => registers.b.into(),
+            C => registers.c.into(),
+            D => registers.d.into(),
+            E => registers.e.into(),
+            H => registers.h.into(),
+            L => registers.l.into(),
+            AF => Bytes::from_bytes(registers.f, registers.a), // TODO: is this the correct order?
+            BC => Bytes::from_bytes(registers.c, registers.b), // TODO: is this the correct order?
+            HL => Bytes::from_bytes(registers.l, registers.h), // TODO: is this the correct order?
+            DE => Bytes::from_bytes(registers.e, registers.d), // TODO: is this the correct order?
+            SP => registers.sp.into(),
+            Const8 => memory.get(Addr(registers.pc).next().unwrap()).into(),
             Const16 => {
                 let op_pointer = Addr(registers.pc).next().unwrap();
-                vec![
+                Bytes::from_bytes(
                     memory.get(op_pointer),
                     memory.get(op_pointer.next().unwrap()),
-                ]
+                )
             }
-            FlagNz => vec![(registers.f & ZERO_FLAG_BITMASK)],
-            FlagZ => vec![(registers.f & ZERO_FLAG_BITMASK)],
-            FlagNc => vec![(registers.f & CARRY_FLAG_BITMASK)],
-            FlagC => vec![(registers.f & CARRY_FLAG_BITMASK)],
+            FlagNz => (registers.f & ZERO_FLAG_BITMASK).into(),
+            FlagZ => (registers.f & ZERO_FLAG_BITMASK).into(),
+            FlagNc => (registers.f & CARRY_FLAG_BITMASK).into(),
+            FlagC => (registers.f & CARRY_FLAG_BITMASK).into(),
         }
     }
 }
@@ -228,14 +222,15 @@ impl Operand {
             Operand::Immediate(location) => location.read(registers, memory),
             Operand::Memory(location) => {
                 let addr_bytes = location.read(registers, memory);
-                let addr = Addr::from_bytes(addr_bytes);
-                vec![memory.get(addr)]
+                let addr = addr_bytes.into();
+                memory.get(addr).into()
             },
             Operand::HighMemory(location) => {
                 let addr_bytes = location.read(registers, memory);
-                let addr_bytes = vec![addr_bytes[0], 0xFF]; // ???
-                let addr = Addr::from_bytes(addr_bytes);
-                vec![memory.get(addr)]
+                let addr_lo_byte = addr_bytes.single().expect("expected single byte");
+                let addr_bytes = Bytes::from_bytes(addr_lo_byte, 0xFF); // TODO:Is this the right order?
+                let addr = addr_bytes.into();
+                memory.get(addr).into()
             },
         }
     }
@@ -246,14 +241,13 @@ impl Operand {
             Operand::Immediate(location) => location.write(registers, memory, values),
             Operand::Memory(location) => {
                 let addr_bytes = location.read(registers, memory);
-                let addr = Addr::from_bytes(addr_bytes);
-                memory.set_word(addr, &values)
+                memory.set_word(addr_bytes.into(), &values)
             },
             Operand::HighMemory(location) => {
                 let addr_bytes = location.read(registers, memory);
-                let addr_bytes = vec![addr_bytes[0], 0xFF]; // ???
-                let addr = Addr::from_bytes(addr_bytes);
-                memory.set_word(addr, &values)
+                let addr_lo_byte = addr_bytes.single().expect("expected single byte");
+                let addr_bytes = Bytes::from_bytes(addr_lo_byte, 0xFF); // TODO:Is this the right order?
+                memory.set_word(addr_bytes.into(), &values)
             },
         }
     }
@@ -371,22 +365,20 @@ impl Instruction {
 }
 
 fn inc(value: &Bytes, flags: Flags) -> (Bytes, Flags) {
-    match value.len() {
-        1 => {
-            let result = value[0].wrapping_add(1);
+    match value {
+        Bytes::One(value) => {
+            let result = value.wrapping_add(1);
             let flags = Flags {
                 zero: result == 0,
                 subtraction: false,
-                half_carry: (value[0] & 0x0F) + 1 > 0x0F,
+                half_carry: (value & 0x0F) + 1 > 0x0F,
                 ..flags
             };
-            (vec![result], flags)
+            (result.into(), flags)
         },
-        2 => {
-            let value = value[0] as u16 | (value[1] as u16) << 8;
+        Bytes::Two(value) => {
             let result = value.wrapping_add(1);
-            let result_bytes = vec![ram::lo(result), ram::hi(result)];
-            (result_bytes, flags)
+            (result.into(), flags)
         },
         _ => panic!("invalid operand size"),
     }
