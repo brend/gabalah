@@ -1,7 +1,6 @@
 use std::{collections::HashMap, vec};
 
 use log::debug;
-use pixels::wgpu::core::registry;
 
 use crate::ram;
 use crate::ram::{Addr, Ram, Registers};
@@ -42,6 +41,46 @@ enum Mnemonic {
     Daa,
     /// Complement A
     Cpl,
+    /// Set Carry flag
+    Scf,
+    /// Complement Carry flag
+    Ccf,
+    /// Halt
+    Halt,
+    /// Add with carry
+    Adc,
+    /// Subtract
+    Sub,
+    /// Subtract with carry
+    Sbc,
+    /// And
+    And,
+    /// Xor
+    Xor,
+    /// Or
+    Or,
+    /// Compare
+    Cp,
+    /// Return
+    Ret,
+    /// Pop
+    Pop,
+    /// Jump
+    Jp,
+    /// Call
+    Call,
+    /// Push
+    Push,
+    /// Restart
+    Rst,
+    /// Return and enable interrupts
+    Reti,
+    /// Enable interrupts
+    Ei, 
+    /// Disable interrupts
+    Di,
+    /// LDHL
+    Ldhl,
 }
 
 use Mnemonic::*;
@@ -63,11 +102,13 @@ enum Location {
     H,
     /// The general purpose register L
     L,
-    /// The 16-bit register BC
+    /// The 16-bit register pair AF
+    AF,
+    /// The 16-bit register pair BC
     BC,
-    /// The 16-bit register HL
+    /// The 16-bit register pair HL
     HL,
-    /// The 16-bit register DE
+    /// The 16-bit register pair DE
     DE,
     /// The stack pointer
     SP,
@@ -79,9 +120,9 @@ enum Location {
     FlagNz,
     /// Zero flag
     FlagZ,
-    /// C flag clear
+    /// No Carry flag (Carry flag is clear)
     FlagNc,
-    /// C flag
+    /// Carry (Carry flag is set)
     FlagC,
 }
 
@@ -96,6 +137,11 @@ impl Location {
     /// Creates an indirectly referenced (memory) operand from the location
     fn mem(&self) -> Operand {
         Operand::Memory(*self)
+    }
+
+    /// Creates an indirectly referenced (memory) operand from the location in high memory
+    fn himem(&self) -> Operand {
+        Operand::HighMemory(*self)
     }
 
     /// Writes to the location
@@ -126,6 +172,7 @@ impl Location {
             E => vec![registers.e],
             H => vec![registers.h],
             L => vec![registers.l],
+            AF => vec![registers.f, registers.a], // TODO: is this the correct order?
             BC => vec![registers.c, registers.b], // TODO: is this the correct order?
             HL => vec![registers.l, registers.h], // TODO: is this the correct order?
             DE => vec![registers.e, registers.d], // TODO: is this the correct order?
@@ -151,8 +198,10 @@ impl Location {
 enum Operand {
     /// An immediate value at a given location
     Immediate(Location),
-    /// An value indirectly references by the address stored at the given location
+    /// A value indirectly referenced by the address stored at the given location
     Memory(Location),
+    /// A value indirectly referenced by the address stored at the given location in high memory
+    HighMemory(Location),
 }
 
 impl Operand {
@@ -164,7 +213,13 @@ impl Operand {
                 let addr_bytes = location.read(registers, memory);
                 let addr = Addr::from_bytes(addr_bytes);
                 vec![memory.get(addr)]
-            }
+            },
+            Operand::HighMemory(location) => {
+                let addr_bytes = location.read(registers, memory);
+                let addr_bytes = vec![addr_bytes[0], 0xFF]; // ???
+                let addr = Addr::from_bytes(addr_bytes);
+                vec![memory.get(addr)]
+            },
         }
     }
 
@@ -176,7 +231,13 @@ impl Operand {
                 let addr_bytes = location.read(registers, memory);
                 let addr = Addr::from_bytes(addr_bytes);
                 memory.set_word(addr, &values)
-            }
+            },
+            Operand::HighMemory(location) => {
+                let addr_bytes = location.read(registers, memory);
+                let addr_bytes = vec![addr_bytes[0], 0xFF]; // ???
+                let addr = Addr::from_bytes(addr_bytes);
+                memory.set_word(addr, &values)
+            },
         }
     }
 }
@@ -266,6 +327,26 @@ impl Instruction {
             Rra => todo!(),
             Daa => todo!(),
             Cpl => todo!(),
+            Scf => todo!(),
+            Ccf => todo!(),
+            Halt => todo!(),
+            Adc => todo!(),
+            Sub => todo!(),
+            Sbc => todo!(),
+            And => todo!(),
+            Xor => todo!(),
+            Or => todo!(),
+            Cp => todo!(),
+            Ret => todo!(),
+            Pop => todo!(),
+            Jp => todo!(),
+            Call => todo!(),
+            Push => todo!(),
+            Rst => todo!(),
+            Reti => todo!(),
+            Ei => todo!(),
+            Di => todo!(),
+            Ldhl => todo!(),
         }
     }
 }
@@ -400,6 +481,442 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         (0x2F, I::new(Cpl, 1, 4, vec![])),
         // jump relative if C flag is clear
         (0x30, I::new_ex(Jr, 2, vec![12, 8], vec![FlagNc.imm(), Const8.imm()])),
+        // load nn into SP
+        (0x31, I::new(Ld, 3, 12, vec![SP.imm(), Const16.imm()])),
+        // load A into [HL]. Decrement HL
+        // 0x32
+        // TODO: invent a way to implement this
+        // increase SP
+        (0x33, I::new(Inc, 1, 8, vec![SP.imm()])),
+        // increase (HL)
+        (0x34, I::new(Inc, 1, 12, vec![HL.mem()])),
+        // decrease (HL)
+        (0x35, I::new(Dec, 1, 12, vec![HL.mem()])),
+        // load n into (HL)
+        (0x36, I::new(Ld, 2, 12, vec![HL.mem(), Const8.imm()])),
+        // set C flag
+        (0x37, I::new(Scf, 1, 4, vec![FlagC.imm()])),
+        // jump relative if C flag is set
+        (0x38, I::new_ex(Jr, 2, vec![12, 8], vec![FlagC.imm(), Const8.imm()])),
+        // add SP to HL
+        (0x39, I::new(Add, 1, 8, vec![HL.imm(), SP.imm()])),
+        // load [HL] into A. Decrement HL
+        // 0x3A
+        // TODO: invent a way to implement this
+        // decrease SP
+        (0x3B, I::new(Dec, 1, 8, vec![SP.imm()])),
+        // increase A
+        (0x3C, I::new(Inc, 1, 4, vec![A.imm()])),
+        // decrease A
+        (0x3D, I::new(Dec, 1, 4, vec![A.imm()])),
+        // load n into A
+        (0x3E, I::new(Ld, 2, 8, vec![A.imm(), Const8.imm()])),
+        // complement carry flag
+        (0x3F, I::new(Ccf, 1, 4, vec![])),
+        // load B into B
+        (0x40, I::new(Ld, 1, 4, vec![B.imm(), B.imm()])),
+        // load C into B
+        (0x41, I::new(Ld, 1, 4, vec![B.imm(), C.imm()])),
+        // load D into B
+        (0x42, I::new(Ld, 1, 4, vec![B.imm(), D.imm()])),
+        // load E into B
+        (0x43, I::new(Ld, 1, 4, vec![B.imm(), E.imm()])),
+        // load H into B
+        (0x44, I::new(Ld, 1, 4, vec![B.imm(), H.imm()])),
+        // load L into B
+        (0x45, I::new(Ld, 1, 4, vec![B.imm(), L.imm()])),
+        // load [HL] into B
+        (0x46, I::new(Ld, 1, 8, vec![B.imm(), HL.mem()])),
+        // load A into B
+        (0x47, I::new(Ld, 1, 4, vec![B.imm(), A.imm()])),
+        // load B into C
+        (0x48, I::new(Ld, 1, 4, vec![C.imm(), B.imm()])),
+        // load C into C
+        (0x49, I::new(Ld, 1, 4, vec![C.imm(), C.imm()])),
+        // load D into C
+        (0x4A, I::new(Ld, 1, 4, vec![C.imm(), D.imm()])),
+        // load E into C
+        (0x4B, I::new(Ld, 1, 4, vec![C.imm(), E.imm()])),
+        // load H into C
+        (0x4C, I::new(Ld, 1, 4, vec![C.imm(), H.imm()])),
+        // load L into C
+        (0x4D, I::new(Ld, 1, 4, vec![C.imm(), L.imm()])),
+        // load [HL] into C
+        (0x4E, I::new(Ld, 1, 8, vec![C.imm(), HL.mem()])),
+        // load A into C
+        (0x4F, I::new(Ld, 1, 4, vec![C.imm(), A.imm()])),
+        // load B into D
+        (0x50, I::new(Ld, 1, 4, vec![D.imm(), B.imm()])),
+        // load C into D
+        (0x51, I::new(Ld, 1, 4, vec![D.imm(), C.imm()])),
+        // load D into D
+        (0x52, I::new(Ld, 1, 4, vec![D.imm(), D.imm()])),
+        // load E into D
+        (0x53, I::new(Ld, 1, 4, vec![D.imm(), E.imm()])),
+        // load H into D
+        (0x54, I::new(Ld, 1, 4, vec![D.imm(), H.imm()])),
+        // load L into D
+        (0x55, I::new(Ld, 1, 4, vec![D.imm(), L.imm()])),
+        // load [HL] into D
+        (0x56, I::new(Ld, 1, 8, vec![D.imm(), HL.mem()])),
+        // load A into D
+        (0x57, I::new(Ld, 1, 4, vec![D.imm(), A.imm()])),
+        // load B into E
+        (0x58, I::new(Ld, 1, 4, vec![E.imm(), B.imm()])),
+        // load C into E
+        (0x59, I::new(Ld, 1, 4, vec![E.imm(), C.imm()])),
+        // load D into E
+        (0x5A, I::new(Ld, 1, 4, vec![E.imm(), D.imm()])),
+        // load E into E
+        (0x5B, I::new(Ld, 1, 4, vec![E.imm(), E.imm()])),
+        // load H into E
+        (0x5C, I::new(Ld, 1, 4, vec![E.imm(), H.imm()])),
+        // load L into E
+        (0x5D, I::new(Ld, 1, 4, vec![E.imm(), L.imm()])),
+        // load [HL] into E
+        (0x5E, I::new(Ld, 1, 8, vec![E.imm(), HL.mem()])),
+        // load A into E
+        (0x5F, I::new(Ld, 1, 4, vec![E.imm(), A.imm()])),
+        // load B into H
+        (0x60, I::new(Ld, 1, 4, vec![H.imm(), B.imm()])),
+        // load C into H
+        (0x61, I::new(Ld, 1, 4, vec![H.imm(), C.imm()])),
+        // load D into H
+        (0x62, I::new(Ld, 1, 4, vec![H.imm(), D.imm()])),
+        // load E into H
+        (0x63, I::new(Ld, 1, 4, vec![H.imm(), E.imm()])),
+        // load H into H
+        (0x64, I::new(Ld, 1, 4, vec![H.imm(), H.imm()])),
+        // load L into H
+        (0x65, I::new(Ld, 1, 4, vec![H.imm(), L.imm()])),
+        // load [HL] into H
+        (0x66, I::new(Ld, 1, 8, vec![H.imm(), HL.mem()])),
+        // load A into H
+        (0x67, I::new(Ld, 1, 4, vec![H.imm(), A.imm()])),
+        // load B into L
+        (0x68, I::new(Ld, 1, 4, vec![L.imm(), B.imm()])),
+        // load C into L
+        (0x69, I::new(Ld, 1, 4, vec![L.imm(), C.imm()])),
+        // load D into L
+        (0x6A, I::new(Ld, 1, 4, vec![L.imm(), D.imm()])),
+        // load E into L
+        (0x6B, I::new(Ld, 1, 4, vec![L.imm(), E.imm()])),
+        // load H into L
+        (0x6C, I::new(Ld, 1, 4, vec![L.imm(), H.imm()])),
+        // load L into L
+        (0x6D, I::new(Ld, 1, 4, vec![L.imm(), L.imm()])),
+        // load [HL] into L
+        (0x6E, I::new(Ld, 1, 8, vec![L.imm(), HL.mem()])),
+        // load A into L
+        (0x6F, I::new(Ld, 1, 4, vec![L.imm(), A.imm()])),
+        // load B into [HL]
+        (0x70, I::new(Ld, 1, 8, vec![HL.mem(), B.imm()])),
+        // load C into [HL]
+        (0x71, I::new(Ld, 1, 8, vec![HL.mem(), C.imm()])),
+        // load D into [HL]
+        (0x72, I::new(Ld, 1, 8, vec![HL.mem(), D.imm()])),
+        // load E into [HL]
+        (0x73, I::new(Ld, 1, 8, vec![HL.mem(), E.imm()])),
+        // load H into [HL]
+        (0x74, I::new(Ld, 1, 8, vec![HL.mem(), H.imm()])),
+        // load L into [HL]
+        (0x75, I::new(Ld, 1, 8, vec![HL.mem(), L.imm()])),
+        // halt
+        (0x76, I::new(Halt, 1, 4, vec![])),
+        // load A into [HL]
+        (0x77, I::new(Ld, 1, 8, vec![HL.mem(), A.imm()])),
+        // load B into A
+        (0x78, I::new(Ld, 1, 4, vec![A.imm(), B.imm()])),
+        // load C into A
+        (0x79, I::new(Ld, 1, 4, vec![A.imm(), C.imm()])),
+        // load D into A
+        (0x7A, I::new(Ld, 1, 4, vec![A.imm(), D.imm()])),
+        // load E into A
+        (0x7B, I::new(Ld, 1, 4, vec![A.imm(), E.imm()])),
+        // load H into A
+        (0x7C, I::new(Ld, 1, 4, vec![A.imm(), H.imm()])),
+        // load L into A
+        (0x7D, I::new(Ld, 1, 4, vec![A.imm(), L.imm()])),
+        // load [HL] into A
+        (0x7E, I::new(Ld, 1, 8, vec![A.imm(), HL.mem()])),
+        // load A into A
+        (0x7F, I::new(Ld, 1, 4, vec![A.imm(), A.imm()])),
+        // add B to A
+        (0x80, I::new(Add, 1, 4, vec![A.imm(), B.imm()])),
+        // add C to A
+        (0x81, I::new(Add, 1, 4, vec![A.imm(), C.imm()])),
+        // add D to A
+        (0x82, I::new(Add, 1, 4, vec![A.imm(), D.imm()])),
+        // add E to A
+        (0x83, I::new(Add, 1, 4, vec![A.imm(), E.imm()])),
+        // add H to A
+        (0x84, I::new(Add, 1, 4, vec![A.imm(), H.imm()])),
+        // add L to A
+        (0x85, I::new(Add, 1, 4, vec![A.imm(), L.imm()])),
+        // add [HL] to A
+        (0x86, I::new(Add, 1, 8, vec![A.imm(), HL.mem()])),
+        // add A to A
+        (0x87, I::new(Add, 1, 4, vec![A.imm(), A.imm()])),
+        // add B to A with carry
+        (0x88, I::new(Adc, 1, 4, vec![A.imm(), B.imm()])),
+        // add C to A with carry
+        (0x89, I::new(Adc, 1, 4, vec![A.imm(), C.imm()])),
+        // add D to A with carry
+        (0x8A, I::new(Adc, 1, 4, vec![A.imm(), D.imm()])),
+        // add E to A with carry
+        (0x8B, I::new(Adc, 1, 4, vec![A.imm(), E.imm()])),
+        // add H to A with carry
+        (0x8C, I::new(Adc, 1, 4, vec![A.imm(), H.imm()])),
+        // add L to A with carry
+        (0x8D, I::new(Adc, 1, 4, vec![A.imm(), L.imm()])),
+        // add [HL] to A with carry
+        (0x8E, I::new(Adc, 1, 8, vec![A.imm(), HL.mem()])),
+        // add A to A with carry
+        (0x8F, I::new(Adc, 1, 4, vec![A.imm(), A.imm()])),
+        // subtract B from A
+        (0x90, I::new(Sub, 1, 4, vec![A.imm(), B.imm()])),
+        // subtract C from A
+        (0x91, I::new(Sub, 1, 4, vec![A.imm(), C.imm()])),
+        // subtract D from A
+        (0x92, I::new(Sub, 1, 4, vec![A.imm(), D.imm()])),
+        // subtract E from A
+        (0x93, I::new(Sub, 1, 4, vec![A.imm(), E.imm()])),
+        // subtract H from A
+        (0x94, I::new(Sub, 1, 4, vec![A.imm(), H.imm()])),
+        // subtract L from A
+        (0x95, I::new(Sub, 1, 4, vec![A.imm(), L.imm()])),
+        // subtract [HL] from A
+        (0x96, I::new(Sub, 1, 8, vec![A.imm(), HL.mem()])),
+        // subtract A from A
+        (0x97, I::new(Sub, 1, 4, vec![A.imm(), A.imm()])),
+        // subtract B from A with carry
+        (0x98, I::new(Sbc, 1, 4, vec![A.imm(), B.imm()])),
+        // subtract C from A with carry
+        (0x99, I::new(Sbc, 1, 4, vec![A.imm(), C.imm()])),
+        // subtract D from A with carry
+        (0x9A, I::new(Sbc, 1, 4, vec![A.imm(), D.imm()])),
+        // subtract E from A with carry
+        (0x9B, I::new(Sbc, 1, 4, vec![A.imm(), E.imm()])),
+        // subtract H from A with carry
+        (0x9C, I::new(Sbc, 1, 4, vec![A.imm(), H.imm()])),
+        // subtract L from A with carry
+        (0x9D, I::new(Sbc, 1, 4, vec![A.imm(), L.imm()])),
+        // subtract [HL] from A with carry
+        (0x9E, I::new(Sbc, 1, 8, vec![A.imm(), HL.mem()])),
+        // subtract A from A with carry
+        (0x9F, I::new(Sbc, 1, 4, vec![A.imm(), A.imm()])),
+        // and B with A
+        (0xA0, I::new(And, 1, 4, vec![A.imm(), B.imm()])),
+        // and C with A
+        (0xA1, I::new(And, 1, 4, vec![A.imm(), C.imm()])),
+        // and D with A
+        (0xA2, I::new(And, 1, 4, vec![A.imm(), D.imm()])),
+        // and E with A
+        (0xA3, I::new(And, 1, 4, vec![A.imm(), E.imm()])),
+        // and H with A
+        (0xA4, I::new(And, 1, 4, vec![A.imm(), H.imm()])),
+        // and L with A
+        (0xA5, I::new(And, 1, 4, vec![A.imm(), L.imm()])),
+        // and [HL] with A
+        (0xA6, I::new(And, 1, 8, vec![A.imm(), HL.mem()])),
+        // and A with A
+        (0xA7, I::new(And, 1, 4, vec![A.imm(), A.imm()])),
+        // xor B with A
+        (0xA8, I::new(Xor, 1, 4, vec![A.imm(), B.imm()])),
+        // xor C with A
+        (0xA9, I::new(Xor, 1, 4, vec![A.imm(), C.imm()])),
+        // xor D with A
+        (0xAA, I::new(Xor, 1, 4, vec![A.imm(), D.imm()])),
+        // xor E with A
+        (0xAB, I::new(Xor, 1, 4, vec![A.imm(), E.imm()])),
+        // xor H with A
+        (0xAC, I::new(Xor, 1, 4, vec![A.imm(), H.imm()])),
+        // xor L with A
+        (0xAD, I::new(Xor, 1, 4, vec![A.imm(), L.imm()])),
+        // xor [HL] with A
+        (0xAE, I::new(Xor, 1, 8, vec![A.imm(), HL.mem()])),
+        // xor A with A
+        (0xAF, I::new(Xor, 1, 4, vec![A.imm(), A.imm()])),
+        // or B with A
+        (0xB0, I::new(Or, 1, 4, vec![A.imm(), B.imm()])),
+        // or C with A
+        (0xB1, I::new(Or, 1, 4, vec![A.imm(), C.imm()])),
+        // or D with A
+        (0xB2, I::new(Or, 1, 4, vec![A.imm(), D.imm()])),
+        // or E with A
+        (0xB3, I::new(Or, 1, 4, vec![A.imm(), E.imm()])),
+        // or H with A
+        (0xB4, I::new(Or, 1, 4, vec![A.imm(), H.imm()])),
+        // or L with A
+        (0xB5, I::new(Or, 1, 4, vec![A.imm(), L.imm()])),
+        // or [HL] with A
+        (0xB6, I::new(Or, 1, 8, vec![A.imm(), HL.mem()])),
+        // or A with A
+        (0xB7, I::new(Or, 1, 4, vec![A.imm(), A.imm()])),
+        // compare B with A
+        (0xB8, I::new(Cp, 1, 4, vec![A.imm(), B.imm()])),
+        // compare C with A
+        (0xB9, I::new(Cp, 1, 4, vec![A.imm(), C.imm()])),
+        // compare D with A
+        (0xBA, I::new(Cp, 1, 4, vec![A.imm(), D.imm()])),
+        // compare E with A
+        (0xBB, I::new(Cp, 1, 4, vec![A.imm(), E.imm()])),
+        // compare H with A
+        (0xBC, I::new(Cp, 1, 4, vec![A.imm(), H.imm()])),
+        // compare L with A
+        (0xBD, I::new(Cp, 1, 4, vec![A.imm(), L.imm()])),
+        // compare [HL] with A
+        (0xBE, I::new(Cp, 1, 8, vec![A.imm(), HL.mem()])),
+        // compare A with A
+        (0xBF, I::new(Cp, 1, 4, vec![A.imm(), A.imm()])),
+        // return if nonzero
+        (0xC0, I::new_ex(Ret, 1, vec![20, 8], vec![FlagNz.imm()])),
+        // pop BC
+        (0xC1, I::new(Pop, 1, 12, vec![BC.imm()])),
+        // jump to nn if nonzero
+        (0xC2, I::new_ex(Jp, 3, vec![16, 12], vec![FlagNz.imm(), Const16.imm()])),
+        // jump to nn
+        (0xC3, I::new(Jp, 3, 16, vec![Const16.imm()])),
+        // call nn if nonzero
+        (0xC4, I::new_ex(Call, 3, vec![24, 12], vec![FlagNz.imm(), Const16.imm()])),
+        // push BC
+        (0xC5, I::new(Push, 1, 16, vec![BC.imm()])),
+        // add n to A
+        (0xC6, I::new(Ld, 2, 8, vec![A.imm(), Const8.imm()])),
+        // restart from 0x00
+        // 0xC7
+        // TODO: implement this
+        // return if zero
+        (0xC8, I::new_ex(Ret, 1, vec![20, 8], vec![FlagZ.imm()])),
+        // return
+        (0xC9, I::new(Ret, 1, 16, vec![])),
+        // jump to nn if zero
+        (0xCA, I::new_ex(Jp, 3, vec![16, 12], vec![FlagZ.imm(), Const16.imm()])),
+        // extended operations
+        // 0xCB
+        // ???
+        // call nn if zero
+        (0xCC, I::new_ex(Call, 3, vec![24, 12], vec![FlagZ.imm(), Const16.imm()])),
+        // call nn
+        (0xCD, I::new(Call, 3, 24, vec![Const16.imm()])),
+        // add n to A with carry
+        (0xCE, I::new(Ld, 2, 8, vec![A.imm(), Const8.imm()])),
+        // restart from 0x08
+        // 0xCF
+        // TODO: implement this
+        // return if no carry
+        (0xD0, I::new_ex(Ret, 1, vec![20, 8], vec![FlagNc.imm()])),
+        // pop DE
+        (0xD1, I::new(Pop, 1, 12, vec![DE.imm()])),
+        // jump to nn if no carry
+        (0xD2, I::new_ex(Jp, 3, vec![16, 12], vec![FlagNc.imm(), Const16.imm()])),
+        // extended operations
+        // 0xD3
+        // ???
+        // call nn if no carry
+        (0xD4, I::new_ex(Call, 3, vec![24, 12], vec![FlagNc.imm(), Const16.imm()])),
+        // push DE
+        (0xD5, I::new(Push, 1, 16, vec![DE.imm()])),
+        // subtract n from A
+        (0xD6, I::new(Ld, 2, 8, vec![A.imm(), Const8.imm()])),
+        // restart from 0x10
+        // 0xD7
+        // TODO: implement this
+        // return if carry
+        (0xD8, I::new_ex(Ret, 1, vec![20, 8], vec![FlagC.imm()])),
+        // return and enable interrupts
+        (0xD9, I::new(Reti, 1, 16, vec![])),
+        // jump to nn if carry
+        (0xDA, I::new_ex(Jp, 3, vec![16, 12], vec![FlagC.imm(), Const16.imm()])),
+        // extended operations
+        // 0xDB
+        // ???
+        // call nn if carry
+        (0xDC, I::new_ex(Call, 3, vec![24, 12], vec![FlagC.imm(), Const16.imm()])),
+        // extended operations
+        // 0xDD
+        // ???
+        // subtract n from A with carry
+        (0xDE, I::new(Ld, 2, 8, vec![A.imm(), Const8.imm()])),
+        // restart from 0x18
+        // 0xDF
+        // TODO: implement this
+        // load A into [0xFF + n]
+        (0xE0, I::new(Ld, 2, 12, vec![Const8.himem(), A.imm()])),
+        // pop HL
+        (0xE1, I::new(Pop, 1, 12, vec![HL.imm()])),
+        // load A into [0xFF + C]
+        (0xE2, I::new(Ld, 1, 8, vec![C.himem(), A.imm()])),
+        // extended operations
+        // 0xE3
+        // ???
+        // extended operations
+        // 0xE4
+        // ???
+        // push HL
+        (0xE5, I::new(Push, 1, 16, vec![HL.imm()])),
+        // and n with A
+        (0xE6, I::new(Ld, 2, 8, vec![A.imm(), Const8.imm()])),
+        // restart from 0x20
+        // 0xE7
+        // TODO: implement this
+        // add SP to HL
+        (0xE8, I::new(Add, 2, 16, vec![SP.imm(), Const8.imm()])),
+        // jump to HL
+        (0xE9, I::new(Jp, 1, 4, vec![HL.imm()])),
+        // load A into [nn]
+        (0xEA, I::new(Ld, 3, 16, vec![Const16.mem(), A.imm()])),
+        // extended operations
+        // 0xEB
+        // ???
+        // extended operations
+        // 0xEC
+        // ???
+        // extended operations
+        // 0xED
+        // ???
+        // xor n with A
+        (0xEE, I::new(Ld, 2, 8, vec![A.imm(), Const8.imm()])),
+        // restart from 0x28
+        // 0xEF
+        // TODO: implement this
+        // load [0xFF + n] into A
+        (0xF0, I::new(Ld, 2, 12, vec![A.imm(), Const8.himem()])),
+        // pop AF
+        (0xF1, I::new(Pop, 1, 12, vec![AF.imm()])),
+        // load [0xFF + C] into A
+        (0xF2, I::new(Ld, 1, 8, vec![A.imm(), C.himem()])),
+        // disable interrupts
+        (0xF3, I::new(Di, 1, 4, vec![])),
+        // extended operations
+        // 0xF4
+        // ???
+        // push AF
+        (0xF5, I::new(Push, 1, 16, vec![AF.imm()])),
+        // or n with A
+        (0xF6, I::new(Ld, 2, 8, vec![A.imm(), Const8.imm()])),
+        // restart from 0x30
+        // 0xF7
+        // TODO: implement this
+        // load SP + n into HL
+        (0xF8, I::new(Ldhl, 2, 12, vec![Const8.imm()])),
+        // load HL into [SP]
+        (0xF9, I::new(Ld, 1, 8, vec![SP.mem(), HL.imm()])),
+        // load [nn] into A
+        (0xFA, I::new(Ld, 3, 16, vec![A.imm(), Const16.mem()])),
+        // enable interrupts
+        (0xFB, I::new(Ei, 1, 4, vec![])),
+        // extended operations
+        // 0xFC
+        // ???
+        // extended operations
+        // 0xFD
+        // ???
+        // compare n with A
+        (0xFE, I::new(Cp, 2, 8, vec![A.imm(), Const8.imm()])),
+        // restart from 0x38
+        // 0xFF
+        // TODO: implement this
     ]);
 
     map
