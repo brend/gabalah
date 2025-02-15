@@ -323,9 +323,12 @@ impl Instruction {
                     self.operands.len() == 1,
                     "dec instruction requires 1 operand"
                 );
-                let loc = self.operands[0];
-                let bytes = loc.read(r, m);
-                todo!("implement");
+                let location = self.operands[0];
+                let bytes = location.read(r, m);
+                let flags = r.flags();
+                let (decreased, flags) = dec(&bytes, flags);
+                location.write(r, m, decreased);
+                r.set_flags(flags);
             }
             Add => {
                 todo!()
@@ -379,8 +382,26 @@ fn inc(value: &Bytes, flags: Flags) -> (Bytes, Flags) {
         Bytes::Two(value) => {
             let result = value.wrapping_add(1);
             (result.into(), flags)
+        }
+    }
+}
+
+fn dec(value: &Bytes, flags: Flags) -> (Bytes, Flags) {
+    match value {
+        Bytes::One(value) => {
+            let result = value.wrapping_sub(1);
+            let flags = Flags {
+                zero: result == 0,
+                subtraction: true,
+                half_carry: (value & 0x0F) == 0,
+                ..flags
+            };
+            (result.into(), flags)
         },
-        _ => panic!("invalid operand size"),
+        Bytes::Two(value) => {
+            let result = value.wrapping_sub(1);
+            (result.into(), flags)
+        }
     }
 }
 
