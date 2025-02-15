@@ -1,5 +1,15 @@
 type Bytes = Vec<u8>;
 
+/// The contents of the flags register F 
+/// in structured form
+#[derive(Debug, Clone, Copy)]
+pub struct Flags {
+    pub zero: bool,
+    pub subtraction: bool,
+    pub half_carry: bool,
+    pub carry: bool,
+}
+
 /// The Game Boy's CPU registers
 #[derive(Default, Debug)]
 pub struct Registers {
@@ -35,6 +45,33 @@ impl Registers {
     pub fn set_bc(&mut self, lo: u8, hi: u8) {
         self.c = lo;
         self.b = hi;
+    }
+
+    /// returns the flags register
+    pub fn flags(&self) -> Flags {
+        Flags {
+            zero: self.f & 0b1000_0000 != 0,
+            subtraction: self.f & 0b0100_0000 != 0,
+            half_carry: self.f & 0b0010_0000 != 0,
+            carry: self.f & 0b0001_0000 != 0,
+        }
+    }
+
+    /// sets the flags register
+    pub fn set_flags(&mut self, flags: Flags) {
+        self.f = 0;
+        if flags.zero {
+            self.f |= 0b1000_0000;
+        }
+        if flags.subtraction {
+            self.f |= 0b0100_0000;
+        }
+        if flags.half_carry {
+            self.f |= 0b0010_0000;
+        }
+        if flags.carry {
+            self.f |= 0b0001_0000;
+        }
     }
 }
 

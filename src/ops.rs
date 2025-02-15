@@ -3,7 +3,7 @@ use std::{collections::HashMap, vec};
 use log::debug;
 
 use crate::ram;
-use crate::ram::{Addr, Ram, Registers};
+use crate::ram::{Addr, Ram, Registers, Flags};
 
 type Bytes = Vec<u8>;
 
@@ -317,10 +317,12 @@ impl Instruction {
                     self.operands.len() == 1,
                     "inc instruction requires 1 operand"
                 );
-                let loc = self.operands[0];
-                let bytes = loc.read(r, m);
-                todo!("flags");
-                loc.write(r, m, add(&bytes, 1));
+                let location = self.operands[0];
+                let bytes = location.read(r, m);
+                let flags = r.flags();
+                let (increased, flags) = inc(&bytes, flags);
+                location.write(r, m, increased);
+                r.set_flags(flags);
             }
             Dec => {
                 debug_assert!(
@@ -329,8 +331,7 @@ impl Instruction {
                 );
                 let loc = self.operands[0];
                 let bytes = loc.read(r, m);
-                todo!("flags");
-                loc.write(r, m, sub(&bytes, 1));
+                todo!("implement");
             }
             Add => {
                 todo!()
@@ -369,25 +370,26 @@ impl Instruction {
     }
 }
 
-fn add(a: &Bytes, b: u8) -> Bytes {
-    debug_assert!(a.len() > 0 && a.len() < 3);
-    if a.len() == 1 {
-        vec![add8(a[0], b)]
-    } else {
-        add16(a, &vec![b, 0])
+fn inc(value: &Bytes, flags: Flags) -> (Bytes, Flags) {
+    match value.len() {
+        1 => {
+            let result = value[0].wrapping_add(1);
+            let flags = Flags {
+                zero: result == 0,
+                subtraction: false,
+                half_carry: (value[0] & 0x0F) + 1 > 0x0F,
+                ..flags
+            };
+            (vec![result], flags)
+        },
+        2 => {
+            let value = value[0] as u16 | (value[1] as u16) << 8;
+            let result = value.wrapping_add(1);
+            let result_bytes = vec![ram::lo(result), ram::hi(result)];
+            (result_bytes, flags)
+        },
+        _ => panic!("invalid operand size"),
     }
-}
-
-fn add8(a: u8, b: u8) -> u8 {
-    ((a as u16 + b as u16) % 256) as u8
-}
-
-fn add16(a: &Bytes, b: &Bytes) -> Bytes {
-    todo!()
-}
-
-fn sub(a: &Bytes, b: u8) -> Bytes {
-    todo!()
 }
 
 type I = Instruction;
