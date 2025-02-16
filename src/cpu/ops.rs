@@ -1,108 +1,3 @@
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::memory::{Registers, Ram};
-
-    fn setup() -> (Registers, Ram) {
-        let registers = Registers::default();
-        let memory = Ram::new();
-        (registers, memory)
-    }
-
-    #[test]
-    fn test_ld_immediate() {
-        let (mut registers, mut memory) = setup();
-        let instruction = Instruction::new(Mnemonic::Ld, 2, 8, vec![Location::A.imm(), Location::Const8.imm()]);
-        memory.set(Addr(0x100), 0x42);
-        memory.set(Addr(registers.pc + 1), 0x42);
-        instruction.execute(&mut memory, &mut registers);
-        assert_eq!(registers.a, 0x42);
-    }
-
-    #[test]
-    fn test_inc() {
-        let (mut registers, mut memory) = setup();
-        registers.a = 0x10;
-        let instruction = Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::A.imm()]);
-        instruction.execute(&mut memory, &mut registers);
-        assert_eq!(registers.a, 0x11, "unexpected INC result");
-        assert_eq!(registers.f, 0, "unexpected flags");
-    }
-
-    #[test]
-    fn test_inc_wrap() {
-        let (mut registers, mut memory) = setup();
-        registers.a = 0xFF;
-        let instruction = Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::A.imm()]);
-        instruction.execute(&mut memory, &mut registers);
-        assert_eq!(registers.a, 0x00, "unexpected INC result");
-        assert_eq!(registers.f, ZERO_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK, "unexpected flags");
-    }
-
-    #[test]
-    fn test_dec() {
-        let (mut registers, mut memory) = setup();
-        registers.a = 0x10;
-        let instruction = Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::A.imm()]);
-        instruction.execute(&mut memory, &mut registers);
-        assert_eq!(registers.a, 0x0F, "unexpected DEC result");
-        assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK, "unexpected flags");
-    }
-
-    #[test]
-    fn test_dec_zero() {
-        let (mut registers, mut memory) = setup();
-        registers.a = 0x01;
-        let instruction = Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::A.imm()]);
-        instruction.execute(&mut memory, &mut registers);
-        assert_eq!(registers.a, 0x00, "unexpected DEC result");
-        assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK | ZERO_FLAG_BITMASK, "unexpected flags");
-    }
-
-    #[test]
-    fn test_add() {
-        let (mut registers, mut memory) = setup();
-        registers.a = 0x10;
-        let instruction = Instruction::new(Mnemonic::Add, 1, 4, vec![Location::A.imm(), Location::Const8.imm()]);
-        memory.set(Addr(registers.pc + 1), 0x05);
-        instruction.execute(&mut memory, &mut registers);
-        assert_eq!(registers.a, 0x15);
-    }
-
-    #[test]
-    fn test_add_wrap() {
-        let (mut registers, mut memory) = setup();
-        registers.a = 0xFF;
-        let instruction = Instruction::new(Mnemonic::Add, 1, 4, vec![Location::A.imm(), Location::Const8.imm()]);
-        memory.set(Addr(registers.pc + 1), 0x01);
-        instruction.execute(&mut memory, &mut registers);
-        assert_eq!(registers.a, 0x00);
-        assert_eq!(registers.f, ZERO_FLAG_BITMASK | CARRY_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK);
-    }
-
-    #[test]
-    fn test_sub() {
-        let (mut registers, mut memory) = setup();
-        registers.a = 0x10;
-        let instruction = Instruction::new(Mnemonic::Sub, 1, 4, vec![Location::A.imm(), Location::Const8.imm()]);
-        memory.set(Addr(registers.pc + 1), 0x05);
-        instruction.execute(&mut memory, &mut registers);
-        assert_eq!(registers.a, 0x0B, "unexpected result");
-        assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK, "unexpected flags");
-    }
-
-    #[test]
-    fn test_sub_zero() {
-        let (mut registers, mut memory) = setup();
-        registers.a = 0x10;
-        let instruction = Instruction::new(Mnemonic::Sub, 1, 4, vec![Location::A.imm(), Location::Const8.imm()]);
-        memory.set(Addr(registers.pc + 1), 0x10);
-        instruction.execute(&mut memory, &mut registers);
-        assert_eq!(registers.a, 0x00);
-        assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK | ZERO_FLAG_BITMASK);
-    }
-}
-
 use std::{collections::HashMap, vec};
 
 use log::debug;
@@ -110,14 +5,14 @@ use log::debug;
 use super::alu;
 use crate::memory::{Addr, Ram, Registers, Flags, Bytes};
 
-const ZERO_FLAG_BITMASK: u8 = 1 << 7;
-const SUBTRACTION_FLAG_BITMASK: u8 = 1 << 6;
-const HALF_CARRY_FLAG_BITMASK: u8 = 1 << 5;
-const CARRY_FLAG_BITMASK: u8 = 1 << 4;
+pub const ZERO_FLAG_BITMASK: u8 = 1 << 7;
+pub const SUBTRACTION_FLAG_BITMASK: u8 = 1 << 6;
+pub const HALF_CARRY_FLAG_BITMASK: u8 = 1 << 5;
+pub const CARRY_FLAG_BITMASK: u8 = 1 << 4;
 
 /// Assembly instruction mnemonics
 #[derive(Debug, Clone, Copy)]
-enum Mnemonic {
+pub enum Mnemonic {
     /// The no-operation
     Nop,
     /// Stop
@@ -190,7 +85,7 @@ use Mnemonic::*;
 
 /// Represents the location of an instruction's operands
 #[derive(Debug, Clone, Copy)]
-enum Location {
+pub enum Location {
     /// The accumulator register A
     A,
     /// The general purpose register B
@@ -242,17 +137,17 @@ impl Location {
     }
 
     /// Creates an immediate value operand from the location
-    fn imm(&self) -> Operand {
+    pub fn imm(&self) -> Operand {
         Operand::Immediate(*self)
     }
 
     /// Creates an indirectly referenced (memory) operand from the location
-    fn mem(&self) -> Operand {
+    pub fn mem(&self) -> Operand {
         Operand::Memory(*self)
     }
 
     /// Creates an indirectly referenced (memory) operand from the location in high memory
-    fn himem(&self) -> Operand {
+    pub fn himem(&self) -> Operand {
         Operand::HighMemory(*self)
     }
 
@@ -303,7 +198,7 @@ impl Location {
 
 /// An operand of a CPU instruction
 #[derive(Debug, Clone, Copy)]
-enum Operand {
+pub enum Operand {
     /// An immediate value at a given location
     Immediate(Location),
     /// A value indirectly referenced by the address stored at the given location
@@ -365,7 +260,7 @@ pub struct Instruction {
 
 impl Instruction {
     /// Creates a new instruction with extended parameters
-    fn new_ex(
+    pub fn new_ex(
         mnemonic: Mnemonic,
         bytes: usize,
         cycles: Vec<usize>,
@@ -380,7 +275,7 @@ impl Instruction {
     }
 
     /// Creates a new instruction
-    fn new(mnemonic: Mnemonic, bytes: usize, cycles: usize, operands: Vec<Operand>) -> Instruction {
+    pub fn new(mnemonic: Mnemonic, bytes: usize, cycles: usize, operands: Vec<Operand>) -> Instruction {
         I::new_ex(mnemonic, bytes, vec![cycles], operands)
     }
 
