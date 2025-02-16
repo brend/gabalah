@@ -3,7 +3,7 @@ use std::{collections::HashMap, vec};
 use log::debug;
 
 use super::alu;
-use crate::memory::{Addr, Ram, Registers, Flags, Bytes};
+use crate::memory::{Addr, Ram, Registers, Bytes};
 
 pub const ZERO_FLAG_BITMASK: u8 = 1 << 7;
 pub const SUBTRACTION_FLAG_BITMASK: u8 = 1 << 6;
@@ -304,10 +304,8 @@ impl Instruction {
                 );
                 let location = self.operands[0];
                 let bytes = location.read(r, m);
-                let flags = r.flags();
-                let (increased, flags) = alu::inc(&bytes, flags);
+                let increased = alu::inc(&bytes, &mut r.f);
                 location.write(r, m, increased);
-                r.set_flags(flags);
             }
             Dec => {
                 debug_assert!(
@@ -316,10 +314,8 @@ impl Instruction {
                 );
                 let location = self.operands[0];
                 let bytes = location.read(r, m);
-                let flags = r.flags();
-                let (decreased, flags) = alu::dec(&bytes, flags);
+                let decreased = alu::dec(&bytes, &mut r.f);
                 location.write(r, m, decreased);
-                r.set_flags(flags);
             }
             Add => {
                 debug_assert!(
@@ -330,10 +326,8 @@ impl Instruction {
                 let src = self.operands[1];
                 let dst_bytes = dst.read(r, m);
                 let src_bytes = src.read(r, m);
-                let flags = r.flags();
-                let (result, flags) = alu::add(&dst_bytes, &src_bytes, flags);
-                dst.write(r, m, result);
-                r.set_flags(flags);
+                let sum = alu::add(&dst_bytes, &src_bytes, &mut r.f);
+                dst.write(r, m, sum);
             }
             Sub => {
                 debug_assert!(
@@ -344,32 +338,15 @@ impl Instruction {
                 let src = self.operands[1];
                 let dst_bytes = dst.read(r, m);
                 let src_bytes = src.read(r, m);
-                let flags = r.flags();
-                let (result, flags) = alu::sub(&dst_bytes, &src_bytes, flags);
-                dst.write(r, m, result);
-                r.set_flags(flags);
+                let difference = alu::sub(&dst_bytes, &src_bytes, &mut r.f);
+                dst.write(r, m, difference);
             }
-            Rlca => {
-                let flags = r.flags();
-                let (result, flags) = alu::rlc(r.a);
-                r.a = result;
-                r.set_flags(flags);
-            }
-            Rrca => {
-                let flags = r.flags();
-                let (result, flags) = alu::rrc(r.a);
-                r.a = result;
-                r.set_flags(flags);
-            },
-            Stop => todo!(),
-            Rla => {
-                let flags = r.flags();
-                let (result, flags) = alu::rl(r.a, flags);
-                r.a = result;
-                r.set_flags(flags);
-            },
+            Rlca => r.a = alu::rlc(r.a, &mut r.f),
+            Rrca => r.a = alu::rrc(r.a, &mut r.f),
+            Rla => r.a = alu::rl(r.a, &mut r.f),
+            Rra => r.a = alu::rr(r.a, &mut r.f),
             Jr => todo!(),
-            Rra => todo!(),
+            Stop => todo!(),
             Daa => todo!(),
             Cpl => todo!(),
             Scf => todo!(),
