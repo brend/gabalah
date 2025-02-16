@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ram::{Registers, Ram};
+    use crate::memory::{Registers, Ram};
 
     fn setup() -> (Registers, Ram) {
         let registers = Registers::default();
@@ -107,8 +107,8 @@ use std::{collections::HashMap, vec};
 
 use log::debug;
 
-use crate::alu;
-use crate::ram::{Addr, Ram, Registers, Flags, Bytes};
+use super::alu;
+use crate::memory::{Addr, Ram, Registers, Flags, Bytes};
 
 const ZERO_FLAG_BITMASK: u8 = 1 << 7;
 const SUBTRACTION_FLAG_BITMASK: u8 = 1 << 6;

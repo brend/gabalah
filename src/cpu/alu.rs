@@ -1,4 +1,4 @@
-use crate::ram::{Bytes, Flags};
+use crate::memory::{Bytes, Flags};
 
 pub fn inc(value: &Bytes, flags: Flags) -> (Bytes, Flags) {
     match value {

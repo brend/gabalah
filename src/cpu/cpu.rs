@@ -1,10 +1,11 @@
-use crate::ram::{Ram, Registers, Addr};
-use crate::ops::Instruction;
+use crate::memory::{Ram, Registers, Addr};
+use super::ops::Instruction;
+use super::ops;
 
 /// sets up the Game Boy CPU including registers and memory
 /// and runs the program stored therein
 pub fn run() {
-    let opcode_map = crate::ops::build_opcode_map();
+    let opcode_map = ops::build_opcode_map();
     let mut memory = Ram::new();
     let mut registers = Registers::new();
 

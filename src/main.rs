@@ -1,9 +1,7 @@
 mod app;
-mod ram;
 mod err;
-mod ops;
 mod cpu;
-mod alu;
+mod memory;
 
 fn main()  {
     cpu::run();
