@@ -87,8 +87,8 @@ mod tests {
         let instruction = Instruction::new(Mnemonic::Sub, 1, 4, vec![Location::A.imm(), Location::Const8.imm()]);
         memory.set(Addr(registers.pc + 1), 0x05);
         instruction.execute(&mut memory, &mut registers);
-        assert_eq!(registers.a, 0x0B);
-        assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK);
+        assert_eq!(registers.a, 0x0B, "unexpected result");
+        assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK, "unexpected flags");
     }
 
     #[test]
@@ -440,6 +440,20 @@ impl Instruction {
                 dst.write(r, m, result);
                 r.set_flags(flags);
             }
+            Sub => {
+                debug_assert!(
+                    self.operands.len() == 2,
+                    "sub instruction requires 2 operands"
+                );
+                let dst = self.operands[0];
+                let src = self.operands[1];
+                let dst_bytes = dst.read(r, m);
+                let src_bytes = src.read(r, m);
+                let flags = r.flags();
+                let (result, flags) = alu::sub(&dst_bytes, &src_bytes, flags);
+                dst.write(r, m, result);
+                r.set_flags(flags);
+            }
             Rlca => {
                 let flags = r.flags();
                 let (result, flags) = alu::rlc(r.a);
@@ -467,7 +481,6 @@ impl Instruction {
             Ccf => todo!(),
             Halt => todo!(),
             Adc => todo!(),
-            Sub => todo!(),
             Sbc => todo!(),
             And => todo!(),
             Xor => todo!(),
