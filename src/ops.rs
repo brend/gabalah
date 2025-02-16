@@ -1,8 +1,73 @@
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ram::{Registers, Ram};
+
+    fn setup() -> (Registers, Ram) {
+        let registers = Registers::default();
+        let memory = Ram::new();
+        (registers, memory)
+    }
+
+    #[test]
+    fn test_ld_immediate() {
+        let (mut registers, mut memory) = setup();
+        let instruction = Instruction::new(Mnemonic::Ld, 2, 8, vec![Location::A.imm(), Location::Const8.imm()]);
+        memory.set(Addr(0x100), 0x42);
+        memory.set(Addr(registers.pc + 1), 0x42);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.a, 0x42);
+    }
+
+    #[test]
+    fn test_add() {
+        let (mut registers, mut memory) = setup();
+        registers.a = 0x10;
+        let instruction = Instruction::new(Mnemonic::Add, 1, 4, vec![Location::A.imm(), Location::Const8.imm()]);
+        memory.set(Addr(registers.pc + 1), 0x05);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.a, 0x15);
+    }
+
+    #[test]
+    fn test_add_wrap() {
+        let (mut registers, mut memory) = setup();
+        registers.a = 0xFF;
+        let instruction = Instruction::new(Mnemonic::Add, 1, 4, vec![Location::A.imm(), Location::Const8.imm()]);
+        memory.set(Addr(registers.pc + 1), 0x01);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.a, 0x00);
+        assert_eq!(registers.f, ZERO_FLAG_BITMASK | CARRY_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK);
+    }
+
+    #[test]
+    fn test_sub() {
+        let (mut registers, mut memory) = setup();
+        registers.a = 0x10;
+        let instruction = Instruction::new(Mnemonic::Sub, 1, 4, vec![Location::A.imm(), Location::Const8.imm()]);
+        memory.set(Addr(registers.pc + 1), 0x05);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.a, 0x0B);
+        assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK);
+    }
+
+    #[test]
+    fn test_sub_zero() {
+        let (mut registers, mut memory) = setup();
+        registers.a = 0x10;
+        let instruction = Instruction::new(Mnemonic::Sub, 1, 4, vec![Location::A.imm(), Location::Const8.imm()]);
+        memory.set(Addr(registers.pc + 1), 0x10);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.a, 0x00);
+        assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK | ZERO_FLAG_BITMASK);
+    }
+}
+
 use std::{collections::HashMap, vec};
 
 use log::debug;
 
-use crate::ram;
+use crate::alu;
 use crate::ram::{Addr, Ram, Registers, Flags, Bytes};
 
 const ZERO_FLAG_BITMASK: u8 = 1 << 7;
@@ -208,14 +273,6 @@ enum Operand {
 }
 
 impl Operand {
-    fn bytes(&self) -> usize {
-        match self {
-            Operand::Immediate(location) => location.bytes(),
-            Operand::Memory(_) => 2,
-            Operand::HighMemory(_) => 2,
-        }
-    }
-
     /// Reads the location represented by the operand
     fn read(&self, registers: &Registers, memory: &Ram) -> Bytes {
         match self {
@@ -303,7 +360,6 @@ impl Instruction {
                 );
                 let dst = self.operands[0];
                 let src = self.operands[1];
-                debug_assert!(dst.bytes() == src.bytes(), "operands must be the same size");
                 dst.write(r, m, src.read(r, m));
             }
             Inc => {
@@ -314,7 +370,7 @@ impl Instruction {
                 let location = self.operands[0];
                 let bytes = location.read(r, m);
                 let flags = r.flags();
-                let (increased, flags) = inc(&bytes, flags);
+                let (increased, flags) = alu::inc(&bytes, flags);
                 location.write(r, m, increased);
                 r.set_flags(flags);
             }
@@ -326,19 +382,43 @@ impl Instruction {
                 let location = self.operands[0];
                 let bytes = location.read(r, m);
                 let flags = r.flags();
-                let (decreased, flags) = dec(&bytes, flags);
+                let (decreased, flags) = alu::dec(&bytes, flags);
                 location.write(r, m, decreased);
                 r.set_flags(flags);
             }
             Add => {
-                todo!()
+                debug_assert!(
+                    self.operands.len() == 2,
+                    "add instruction requires 2 operands"
+                );
+                let dst = self.operands[0];
+                let src = self.operands[1];
+                let dst_bytes = dst.read(r, m);
+                let src_bytes = src.read(r, m);
+                let flags = r.flags();
+                let (result, flags) = alu::add(&dst_bytes, &src_bytes, flags);
+                dst.write(r, m, result);
+                r.set_flags(flags);
             }
             Rlca => {
-                todo!()
+                let flags = r.flags();
+                let (result, flags) = alu::rlc(r.a);
+                r.a = result;
+                r.set_flags(flags);
             }
-            Rrca => todo!(),
+            Rrca => {
+                let flags = r.flags();
+                let (result, flags) = alu::rrc(r.a);
+                r.a = result;
+                r.set_flags(flags);
+            },
             Stop => todo!(),
-            Rla => todo!(),
+            Rla => {
+                let flags = r.flags();
+                let (result, flags) = alu::rl(r.a, flags);
+                r.a = result;
+                r.set_flags(flags);
+            },
             Jr => todo!(),
             Rra => todo!(),
             Daa => todo!(),
@@ -363,44 +443,6 @@ impl Instruction {
             Ei => todo!(),
             Di => todo!(),
             Ldhl => todo!(),
-        }
-    }
-}
-
-fn inc(value: &Bytes, flags: Flags) -> (Bytes, Flags) {
-    match value {
-        Bytes::One(value) => {
-            let result = value.wrapping_add(1);
-            let flags = Flags {
-                zero: result == 0,
-                subtraction: false,
-                half_carry: (value & 0x0F) + 1 > 0x0F,
-                ..flags
-            };
-            (result.into(), flags)
-        },
-        Bytes::Two(value) => {
-            let result = value.wrapping_add(1);
-            (result.into(), flags)
-        }
-    }
-}
-
-fn dec(value: &Bytes, flags: Flags) -> (Bytes, Flags) {
-    match value {
-        Bytes::One(value) => {
-            let result = value.wrapping_sub(1);
-            let flags = Flags {
-                zero: result == 0,
-                subtraction: true,
-                half_carry: (value & 0x0F) == 0,
-                ..flags
-            };
-            (result.into(), flags)
-        },
-        Bytes::Two(value) => {
-            let result = value.wrapping_sub(1);
-            (result.into(), flags)
         }
     }
 }

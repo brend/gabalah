@@ -136,11 +136,6 @@ impl Registers {
 /// The size of the Game Boy's RAM in bytes
 pub const RAM_SIZE: usize = 64 * 1024;
 
-/// Make a Word (u16) out of two consecutive bytes (u8) in RAM
-fn word(l: u8, h: u8) -> u16 {
-    (h as u16) << 8 | l as u16
-}
-
 /// Return the high byte of the provided word
 pub fn hi(word: u16) -> u8 {
     (word >> 8) as u8
