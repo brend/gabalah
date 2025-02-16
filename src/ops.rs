@@ -20,6 +20,46 @@ mod tests {
     }
 
     #[test]
+    fn test_inc() {
+        let (mut registers, mut memory) = setup();
+        registers.a = 0x10;
+        let instruction = Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::A.imm()]);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.a, 0x11, "unexpected INC result");
+        assert_eq!(registers.f, 0, "unexpected flags");
+    }
+
+    #[test]
+    fn test_inc_wrap() {
+        let (mut registers, mut memory) = setup();
+        registers.a = 0xFF;
+        let instruction = Instruction::new(Mnemonic::Inc, 1, 4, vec![Location::A.imm()]);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.a, 0x00, "unexpected INC result");
+        assert_eq!(registers.f, ZERO_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK, "unexpected flags");
+    }
+
+    #[test]
+    fn test_dec() {
+        let (mut registers, mut memory) = setup();
+        registers.a = 0x10;
+        let instruction = Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::A.imm()]);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.a, 0x0F, "unexpected DEC result");
+        assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK, "unexpected flags");
+    }
+
+    #[test]
+    fn test_dec_zero() {
+        let (mut registers, mut memory) = setup();
+        registers.a = 0x01;
+        let instruction = Instruction::new(Mnemonic::Dec, 1, 4, vec![Location::A.imm()]);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.a, 0x00, "unexpected DEC result");
+        assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK | ZERO_FLAG_BITMASK, "unexpected flags");
+    }
+
+    #[test]
     fn test_add() {
         let (mut registers, mut memory) = setup();
         registers.a = 0x10;

@@ -1,7 +1,14 @@
+/// Create a 16-bit word from two 8-bit values
+fn word(lo: u8, hi: u8) -> u16 {
+    (hi as u16) << 8 | lo as u16
+}
 
+/// A binary value that can be either 8 or 16 bits
 #[derive(Debug, Clone, Copy)]
 pub enum Bytes {
+    /// An 8-bit value
     One(u8),
+    /// A 16-bit value
     Two(u16),
 }
 
