@@ -120,14 +120,14 @@ pub fn sub(value1: &Bytes, value2: &Bytes, flags: &mut u8) -> Bytes {
             let result = value1.wrapping_sub(*value2);
             flags.set_zero(result == 0);
             flags.set_subtraction(true);
-            flags.set_half_carry((value1 & 0x0F) < (value2 & 0x0F));
+            flags.set_half_carry((value1 & 0x0F) + (value2 & 0x0F) > 0x0F);
             flags.set_carry(*value1 < *value2);
             result.into()
         },
         (Bytes::Two(value1), Bytes::Two(value2)) => {
             let result = value1.wrapping_sub(*value2);
             flags.set_subtraction(true);
-            flags.set_half_carry((value1 & 0x0FFF) < (value2 & 0x0FFF));
+            flags.set_half_carry((value1 & 0x0FFF) + (value2 & 0x0FFF) > 0x0FFF);
             flags.set_carry(*value1 < *value2);
             result.into()
         },
