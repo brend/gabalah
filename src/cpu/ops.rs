@@ -288,6 +288,8 @@ impl Instruction {
 
     /// Executes the instruction, modifying the state of the CPU
     pub fn execute(&self, m: &mut Ram, r: &mut Registers) {
+        let mut new_pc = None;
+
         match self.mnemonic {
             Nop => (),
             Ld => {
@@ -353,7 +355,7 @@ impl Instruction {
                     "jr instruction requires 1 operand"
                 );
                 let offset = self.operands[0].read(r, m).single().expect("expected single byte") as i8;
-                r.pc = (r.pc as i32 + 1 + offset as i32) as u16;
+                new_pc = Some((r.pc as i32 + 2 + offset as i32) as u16);
             }
             Jrc => {
                 debug_assert!(
@@ -363,7 +365,7 @@ impl Instruction {
                 let flag = self.operands[0].read(r, m).single().expect("expected single byte");
                 let offset = self.operands[1].read(r, m).single().expect("expected single byte") as i8;
                 if flag == 0 {
-                    r.pc = (r.pc as i32 + 1 + offset as i32) as u16;
+                    new_pc = Some((r.pc as i32 + 2 + offset as i32) as u16);
                 }
             }
             Stop => todo!(),
@@ -388,6 +390,12 @@ impl Instruction {
             Ei => todo!(),
             Di => todo!(),
             Ldhl => todo!(),
+        }
+
+        if let Some(new_pc) = new_pc {
+            r.pc = new_pc;
+        } else {
+            r.pc += self.bytes as u16;
         }
     }
 }

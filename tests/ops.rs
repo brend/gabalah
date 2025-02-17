@@ -102,4 +102,36 @@ mod tests {
         assert_eq!(registers.a, 0x00);
         assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK | ZERO_FLAG_BITMASK);
     }
+
+    #[test]
+    fn test_jr() {
+        let (mut registers, mut memory) = setup();
+        registers.pc = 0x100;
+        let instruction = Instruction::new(Mnemonic::Jr, 2, 12, vec![Location::Const8.imm()]);
+        memory.set(Addr(0x101), 0x05);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.pc, 0x100 + 2 + 5);
+    }
+
+    #[test]
+    fn test_jrc_nz_taken() {
+        let (mut registers, mut memory) = setup();
+        registers.pc = 0x100;
+        registers.f = 0x0;
+        let instruction = Instruction::new(Mnemonic::Jrc, 2, 12, vec![Location::FlagNz.imm(), Location::Const8.imm()]);
+        memory.set(Addr(0x101), 0xFD);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.pc, 0x100 + 2 - 3);
+    }
+
+    #[test]
+    fn test_jrc_nz_not_taken() {
+        let (mut registers, mut memory) = setup();
+        registers.pc = 0x100;
+        registers.f = ZERO_FLAG_BITMASK;
+        let instruction = Instruction::new(Mnemonic::Jrc, 2, 12, vec![Location::FlagNz.imm(), Location::Const8.imm()]);
+        memory.set(Addr(0x101), 0xFD);
+        instruction.execute(&mut memory, &mut registers);
+        assert_eq!(registers.pc, 0x100 + 2);
+    }
 }
