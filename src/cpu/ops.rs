@@ -33,6 +33,8 @@ pub enum Mnemonic {
     Rla,
     /// Jump relative
     Jr,
+    /// Jum relative if condition
+    Jrc,
     /// Rotate A right through Carry flag,
     Rra,
     /// Decimally adjust A
@@ -345,7 +347,25 @@ impl Instruction {
             Rrca => r.a = alu::rrc(r.a, &mut r.f),
             Rla => r.a = alu::rl(r.a, &mut r.f),
             Rra => r.a = alu::rr(r.a, &mut r.f),
-            Jr => todo!(),
+            Jr => {
+                debug_assert!(
+                    self.operands.len() == 1,
+                    "jr instruction requires 1 operand"
+                );
+                let offset = self.operands[0].read(r, m).single().expect("expected single byte") as i8;
+                r.pc = (r.pc as i32 + 1 + offset as i32) as u16;
+            }
+            Jrc => {
+                debug_assert!(
+                    self.operands.len() == 2,
+                    "jrc instruction requires 2 operands"
+                );
+                let flag = self.operands[0].read(r, m).single().expect("expected single byte");
+                let offset = self.operands[1].read(r, m).single().expect("expected single byte") as i8;
+                if flag == 0 {
+                    r.pc = (r.pc as i32 + 1 + offset as i32) as u16;
+                }
+            }
             Stop => todo!(),
             Daa => todo!(),
             Cpl => todo!(),
@@ -425,7 +445,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         (0x16, I::new(Ld, 2, 6, vec![D.imm(), Const8.imm()])),
         // rotate A left through Carry flag
         (0x17, I::new(Rla, 1, 4, vec![])),
-        // jump relative
+        // jump relative by signed 8-bit offset
         (0x18, I::new(Jr, 2, 12, vec![Const8.imm()])),
         // add DE to HL
         (0x19, I::new(Add, 1, 8, vec![HL.imm(), DE.imm()])),
@@ -444,7 +464,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // jump relative if nonzero
         (
             0x20,
-            I::new_ex(Jr, 2, vec![12, 8], vec![FlagNz.imm(), Const8.imm()]),
+            I::new_ex(Jrc, 2, vec![12, 8], vec![FlagNz.imm(), Const8.imm()]),
         ),
         // load nn into HL
         (0x21, I::new(Ld, 3, 12, vec![HL.imm(), Const16.imm()])),
@@ -463,7 +483,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // decimal adjust A
         (0x27, I::new(Daa, 1, 4, vec![])),
         // jump relative if zero
-        (0x28, I::new_ex(Jr, 2, vec![12, 8], vec![FlagZ.imm(), Const8.imm()])),
+        (0x28, I::new_ex(Jrc, 2, vec![12, 8], vec![FlagZ.imm(), Const8.imm()])),
         // add HL to HL
         (0x29, I::new(Add, 1, 8, vec![HL.imm(), HL.imm()])),
         // load [HL] into A. Increment HL
@@ -480,7 +500,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // complement A
         (0x2F, I::new(Cpl, 1, 4, vec![])),
         // jump relative if C flag is clear
-        (0x30, I::new_ex(Jr, 2, vec![12, 8], vec![FlagNc.imm(), Const8.imm()])),
+        (0x30, I::new_ex(Jrc, 2, vec![12, 8], vec![FlagNc.imm(), Const8.imm()])),
         // load nn into SP
         (0x31, I::new(Ld, 3, 12, vec![SP.imm(), Const16.imm()])),
         // load A into [HL]. Decrement HL
@@ -497,7 +517,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // set C flag
         (0x37, I::new(Scf, 1, 4, vec![FlagC.imm()])),
         // jump relative if C flag is set
-        (0x38, I::new_ex(Jr, 2, vec![12, 8], vec![FlagC.imm(), Const8.imm()])),
+        (0x38, I::new_ex(Jrc, 2, vec![12, 8], vec![FlagC.imm(), Const8.imm()])),
         // add SP to HL
         (0x39, I::new(Add, 1, 8, vec![HL.imm(), SP.imm()])),
         // load [HL] into A. Decrement HL
