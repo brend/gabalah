@@ -93,7 +93,10 @@ pub struct Registers {
 impl Registers {
     /// returns an instance of Registers with every register set to 0
     pub fn new() -> Registers {
-        Registers::default()
+        Registers {
+            pc: 0x100,
+            ..Default::default()
+        }
     }
 
     /// sets the value of the 16-bit BC register

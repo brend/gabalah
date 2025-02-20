@@ -3,6 +3,7 @@ use std::{collections::HashMap, vec};
 use log::debug;
 
 use super::alu;
+use alu::Flags;
 use crate::memory::{Addr, Ram, Registers, Bytes};
 
 pub const ZERO_FLAG_BITMASK: u8 = 1 << 7;
@@ -369,7 +370,7 @@ impl Instruction {
                 }
             }
             Stop => todo!(),
-            Daa => todo!(),
+            Daa => alu::daa(&mut r.a, &mut r.f),
             Cpl => todo!(),
             Scf => todo!(),
             Ccf => todo!(),

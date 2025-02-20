@@ -1,6 +1,6 @@
 use crate::memory::Bytes;
 
-trait Flags {
+pub trait Flags {
     fn zero(&self) -> bool;
     fn set_zero(&mut self, value: bool);
     fn subtraction(&self) -> bool;
@@ -173,4 +173,29 @@ pub fn rr(value: u8, flags: &mut u8) -> u8 {
     flags.set_half_carry(false);
     flags.set_carry(carry);
     result
+}
+
+pub fn daa(a: &mut u8, f: &mut u8) {
+    if f.subtraction() {
+        let mut adjustment: u8 = 0;
+        if f.half_carry() {
+            adjustment |= 0x06;
+        }
+        if f.carry() {
+            adjustment |= 0x60;
+        }
+        *a = a.wrapping_sub(adjustment);
+    } else {
+        let mut adjustment: u8 = 0;
+        if f.half_carry() || (*a & 0x0F) > 0x09 {
+            adjustment |= 0x06;
+        }
+        if f.carry() || *a > 0x99 {
+            adjustment |= 0x60;
+            f.set_carry(true);
+        }
+        *a = a.wrapping_add(adjustment);
+    }
+    f.set_zero(*a == 0);
+    f.set_half_carry(false);
 }
