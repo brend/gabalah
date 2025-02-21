@@ -3,7 +3,7 @@ use std::{collections::HashMap, vec};
 use log::debug;
 
 use super::alu;
-use crate::memory::{Addr, Ram, Registers, Bytes};
+use crate::memory::{Addr, Bytes, Ram, Registers};
 
 pub const ZERO_FLAG_BITMASK: u8 = 1 << 7;
 pub const SUBTRACTION_FLAG_BITMASK: u8 = 1 << 6;
@@ -82,7 +82,7 @@ pub enum Mnemonic {
     /// Return and enable interrupts
     Reti,
     /// Enable interrupts
-    Ei, 
+    Ei,
     /// Disable interrupts
     Di,
     /// LDHL
@@ -161,11 +161,7 @@ impl Location {
 
     /// Writes to the location
     fn write(&self, registers: &mut Registers, memory: &mut Ram, values: Bytes) {
-        debug!(
-            "writing [{:?}] to {:?}",
-            values,
-            self
-        );
+        debug!("writing [{:?}] to {:?}", values, self);
         match self {
             A => registers.a = values.single().expect("expected single byte"),
             BC => registers.set_bc(&values),
@@ -224,14 +220,14 @@ impl Operand {
                 let addr_bytes = location.read(registers, memory);
                 let addr = addr_bytes.into();
                 memory.get(addr).into()
-            },
+            }
             Operand::HighMemory(location) => {
                 let addr_bytes = location.read(registers, memory);
                 let addr_lo_byte = addr_bytes.single().expect("expected single byte");
                 let addr_bytes = Bytes::from_bytes(addr_lo_byte, 0xFF); // TODO:Is this the right order?
                 let addr = addr_bytes.into();
                 memory.get(addr).into()
-            },
+            }
         }
     }
 
@@ -242,13 +238,13 @@ impl Operand {
             Operand::Memory(location) => {
                 let addr_bytes = location.read(registers, memory);
                 memory.set_word(addr_bytes.into(), &values)
-            },
+            }
             Operand::HighMemory(location) => {
                 let addr_bytes = location.read(registers, memory);
                 let addr_lo_byte = addr_bytes.single().expect("expected single byte");
                 let addr_bytes = Bytes::from_bytes(addr_lo_byte, 0xFF); // TODO:Is this the right order?
                 memory.set_word(addr_bytes.into(), &values)
-            },
+            }
         }
     }
 }
@@ -266,11 +262,7 @@ pub struct Instruction {
 
 impl Instruction {
     /// Creates a new instruction with extended parameters
-    pub fn new_ex(
-        mnemonic: Mnemonic,
-        bytes: usize,
-        cycles: Vec<usize>,
-    ) -> Instruction {
+    pub fn new_ex(mnemonic: Mnemonic, bytes: usize, cycles: Vec<usize>) -> Instruction {
         Instruction {
             mnemonic,
             bytes,
@@ -319,7 +311,7 @@ impl Instruction {
                 let src_bytes = src.read(r, m);
                 let difference = alu::sub(&dst_bytes, &src_bytes, &mut r.f);
                 dst.write(r, m, difference);
-            }            
+            }
             Sbc(dst, src) => todo!(),
             Rlca => r.a = alu::rlc(r.a, &mut r.f),
             Rrca => r.a = alu::rrc(r.a, &mut r.f),
@@ -341,7 +333,7 @@ impl Instruction {
             Cpl => {
                 r.a = !r.a;
                 r.f |= SUBTRACTION_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK;
-            },
+            }
             Scf => r.f |= CARRY_FLAG_BITMASK,
             Ccf => {
                 r.f ^= CARRY_FLAG_BITMASK;
@@ -360,18 +352,18 @@ impl Instruction {
                 let src_byte = src.read(r, m).single().expect("expected single byte");
                 let result = alu::xor(dst_byte, src_byte, &mut r.f);
                 dst.write(r, m, result.into());
-            },
+            }
             Or(dst, src) => {
                 let dst_byte = dst.read(r, m).single().expect("expected single byte");
                 let src_byte = src.read(r, m).single().expect("expected single byte");
                 let result = alu::or(dst_byte, src_byte, &mut r.f);
                 dst.write(r, m, result.into());
-            },
+            }
             Cp(dst, src) => {
                 let dst_byte = dst.read(r, m).single().expect("expected single byte");
                 let src_byte = src.read(r, m).single().expect("expected single byte");
                 alu::cp(dst_byte, src_byte, &mut r.f);
-            },
+            }
             Ret => {
                 let lo = m.get(Addr(r.sp));
                 let hi = m.get(Addr(r.sp + 1));
@@ -386,17 +378,57 @@ impl Instruction {
                     r.pc = Bytes::from_bytes(lo, hi).word().unwrap();
                     r.sp += 2;
                 }
-            }
-            Jp(dst) => todo!(),
-            Jpc(condition, dst) => todo!(),
-            Call(dst) => todo!(),
-            Callc(condition, dst) => todo!(),
-            Push(src) => todo!(),
-            Pop(dst) => todo!(),
-            Rst => todo!(),
+            }            
             Reti => todo!(),
             Ei => todo!(),
             Di => todo!(),
+            Jp(dst) => {
+                let lo = dst.read(r, m).single().expect("expected single byte");
+                let hi = dst.read(r, m).single().expect("expected single byte");
+                r.pc = Bytes::from_bytes(lo, hi).word().unwrap();
+            }
+            Jpc(cc, dst) => {
+                let flag = cc.read(r, m).single().expect("expected single byte");
+                if flag == 1 {
+                    let lo = dst.read(r, m).single().expect("expected single byte");
+                    let hi = dst.read(r, m).single().expect("expected single byte");
+                    r.pc = Bytes::from_bytes(lo, hi).word().unwrap();
+                }
+            }
+            Call(dst) => {
+                let lo = dst.read(r, m).single().expect("expected single byte");
+                let hi = dst.read(r, m).single().expect("expected single byte");
+                let ret = r.pc + 2;
+                m.set(Addr(r.sp - 1), (ret >> 8) as u8);
+                m.set(Addr(r.sp - 2), ret as u8);
+                r.sp -= 2;
+                r.pc = Bytes::from_bytes(lo, hi).word().unwrap();
+            }
+            Callc(condition, dst) => {
+                let flag = condition.read(r, m).single().expect("expected single byte");
+                if flag == 1 {
+                    let lo = dst.read(r, m).single().expect("expected single byte");
+                    let hi = dst.read(r, m).single().expect("expected single byte");
+                    let ret = r.pc + 2;
+                    m.set(Addr(r.sp - 1), (ret >> 8) as u8);
+                    m.set(Addr(r.sp - 2), ret as u8);
+                    r.sp -= 2;
+                    r.pc = Bytes::from_bytes(lo, hi).word().unwrap();
+                }
+            }
+            Push(src) => {
+                let bytes = src.read(r, m);
+                m.set(Addr(r.sp - 1), bytes.hi());
+                m.set(Addr(r.sp - 2), bytes.lo());
+                r.sp -= 2;
+            }
+            Pop(dst) => {
+                let lo = m.get(Addr(r.sp));
+                let hi = m.get(Addr(r.sp + 1));
+                dst.write(r, m, Bytes::from_bytes(hi, lo));
+                r.sp += 2;
+            }
+            Rst => todo!(),
             Ldhl(op) => todo!(),
         }
 
@@ -499,7 +531,10 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // decimal adjust A
         (0x27, I::new(Daa, 1, 4)),
         // jump relative if zero
-        (0x28, I::new_ex(Jrc(FlagZ.imm(), Const8.imm()), 2, vec![12, 8])),
+        (
+            0x28,
+            I::new_ex(Jrc(FlagZ.imm(), Const8.imm()), 2, vec![12, 8]),
+        ),
         // add HL to HL
         (0x29, I::new(Add(HL.imm(), HL.imm()), 1, 8)),
         // load [HL] into A. Increment HL
@@ -516,7 +551,10 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // complement A
         (0x2F, I::new(Cpl, 1, 4)),
         // jump relative if C flag is clear
-        (0x30, I::new_ex(Jrc(FlagNc.imm(), Const8.imm()), 2, vec![12, 8])),
+        (
+            0x30,
+            I::new_ex(Jrc(FlagNc.imm(), Const8.imm()), 2, vec![12, 8]),
+        ),
         // load nn into SP
         (0x31, I::new(Ld(SP.imm(), Const16.imm()), 3, 12)),
         // load A into [HL]. Decrement HL
@@ -533,7 +571,10 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // set C flag
         (0x37, I::new(Scf, 1, 4)),
         // jump relative if C flag is set
-        (0x38, I::new_ex(Jrc(FlagC.imm(), Const8.imm()), 2, vec![12, 8])),
+        (
+            0x38,
+            I::new_ex(Jrc(FlagC.imm(), Const8.imm()), 2, vec![12, 8]),
+        ),
         // add SP to HL
         (0x39, I::new(Add(HL.imm(), SP.imm()), 1, 8)),
         // load [HL] into A. Decrement HL
@@ -810,11 +851,17 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // pop BC
         (0xC1, I::new(Pop(BC.imm()), 1, 12)),
         // jump to nn if nonzero
-        (0xC2, I::new_ex(Jpc(FlagNz.imm(), Const16.imm()), 3, vec![16, 12])),
+        (
+            0xC2,
+            I::new_ex(Jpc(FlagNz.imm(), Const16.imm()), 3, vec![16, 12]),
+        ),
         // jump to nn
         (0xC3, I::new(Jp(Const16.imm()), 3, 16)),
         // call nn if nonzero
-        (0xC4, I::new_ex(Callc(FlagNz.imm(), Const16.imm()), 3, vec![24, 12])),
+        (
+            0xC4,
+            I::new_ex(Callc(FlagNz.imm(), Const16.imm()), 3, vec![24, 12]),
+        ),
         // push BC
         (0xC5, I::new(Push(BC.imm()), 1, 16)),
         // add n to A
@@ -827,12 +874,18 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // return
         (0xC9, I::new(Ret, 1, 16)),
         // jump to nn if zero
-        (0xCA, I::new_ex(Jpc(FlagZ.imm(), Const16.imm()), 3, vec![16, 12])),
+        (
+            0xCA,
+            I::new_ex(Jpc(FlagZ.imm(), Const16.imm()), 3, vec![16, 12]),
+        ),
         // extended operations
         // 0xCB
         // ???
         // call nn if zero
-        (0xCC, I::new_ex(Callc(FlagZ.imm(), Const16.imm()), 3, vec![24, 12])),
+        (
+            0xCC,
+            I::new_ex(Callc(FlagZ.imm(), Const16.imm()), 3, vec![24, 12]),
+        ),
         // call nn
         (0xCD, I::new(Call(Const16.imm()), 3, 24)),
         // add n to A with carry
@@ -845,12 +898,18 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // pop DE
         (0xD1, I::new(Pop(DE.imm()), 1, 12)),
         // jump to nn if no carry
-        (0xD2, I::new_ex(Jpc(FlagNc.imm(), Const16.imm()), 3, vec![16, 12])),
+        (
+            0xD2,
+            I::new_ex(Jpc(FlagNc.imm(), Const16.imm()), 3, vec![16, 12]),
+        ),
         // extended operations
         // 0xD3
         // ???
         // call nn if no carry
-        (0xD4, I::new_ex(Callc(FlagNc.imm(), Const16.imm()), 3, vec![24, 12])),
+        (
+            0xD4,
+            I::new_ex(Callc(FlagNc.imm(), Const16.imm()), 3, vec![24, 12]),
+        ),
         // push DE
         (0xD5, I::new(Push(DE.imm()), 1, 16)),
         // subtract n from A
@@ -863,12 +922,18 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // return and enable interrupts
         (0xD9, I::new(Reti, 1, 16)),
         // jump to nn if carry
-        (0xDA, I::new_ex(Jpc(FlagC.imm(), Const16.imm()), 3, vec![16, 12])),
+        (
+            0xDA,
+            I::new_ex(Jpc(FlagC.imm(), Const16.imm()), 3, vec![16, 12]),
+        ),
         // extended operations
         // 0xDB
         // ???
         // call nn if carry
-        (0xDC, I::new_ex(Callc(FlagC.imm(), Const16.imm()), 3, vec![24, 12])),
+        (
+            0xDC,
+            I::new_ex(Callc(FlagC.imm(), Const16.imm()), 3, vec![24, 12]),
+        ),
         // extended operations
         // 0xDD
         // ???
