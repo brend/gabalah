@@ -2,7 +2,7 @@ use std::{collections::HashMap, vec};
 
 use log::debug;
 
-use super::alu;
+use super::alu::{self, Flags};
 use crate::memory::{Addr, Bytes, Ram, Registers};
 
 pub const ZERO_FLAG_BITMASK: u8 = 1 << 7;
@@ -87,6 +87,8 @@ pub enum Mnemonic {
     Di,
     /// LDHL
     Ldhl(Operand),
+    /// Invalid instruction
+    Invalid(&'static str),
 }
 
 use Mnemonic::*;
@@ -170,32 +172,32 @@ impl Location {
     }
 
     /// Reads from the location
-    fn read(&self, registers: &Registers, memory: &Ram) -> Bytes {
+    fn read(&self, r: &Registers, memory: &Ram) -> Bytes {
         match self {
-            A => registers.a.into(),
-            B => registers.b.into(),
-            C => registers.c.into(),
-            D => registers.d.into(),
-            E => registers.e.into(),
-            H => registers.h.into(),
-            L => registers.l.into(),
-            AF => Bytes::from_bytes(registers.f, registers.a), // TODO: is this the correct order?
-            BC => Bytes::from_bytes(registers.c, registers.b), // TODO: is this the correct order?
-            HL => Bytes::from_bytes(registers.l, registers.h), // TODO: is this the correct order?
-            DE => Bytes::from_bytes(registers.e, registers.d), // TODO: is this the correct order?
-            SP => registers.sp.into(),
-            Const8 => memory.get(Addr(registers.pc).next().unwrap()).into(),
+            A => r.a.into(),
+            B => r.b.into(),
+            C => r.c.into(),
+            D => r.d.into(),
+            E => r.e.into(),
+            H => r.h.into(),
+            L => r.l.into(),
+            AF => r.af(),
+            BC => r.bc(),
+            HL => r.hl(),
+            DE => r.de(),
+            SP => r.sp.into(),
+            Const8 => memory.get(Addr(r.pc).next().unwrap()).into(),
             Const16 => {
-                let op_pointer = Addr(registers.pc).next().unwrap();
+                let op_pointer = Addr(r.pc).next().unwrap();
                 Bytes::from_bytes(
                     memory.get(op_pointer),
                     memory.get(op_pointer.next().unwrap()),
                 )
             }
-            FlagNz => (registers.f & ZERO_FLAG_BITMASK).into(),
-            FlagZ => (registers.f & ZERO_FLAG_BITMASK).into(),
-            FlagNc => (registers.f & CARRY_FLAG_BITMASK).into(),
-            FlagC => (registers.f & CARRY_FLAG_BITMASK).into(),
+            FlagNz => (!r.f.zero()).into(),
+            FlagZ => r.f.zero().into(),
+            FlagNc => (!r.f.carry()).into(),
+            FlagC => r.f.carry().into(),
         }
     }
 }
@@ -440,7 +442,8 @@ impl Instruction {
                 let sp = r.sp as i32;
                 let result = (sp + offset as i32) as u16;
                 r.set_hl(&Bytes::from(result));
-            }
+            },
+            Invalid(msg) => panic!("Invalid instruction or not implemented: {}", msg),
         }
 
         if let Some(new_pc) = new_pc {
@@ -890,7 +893,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         ),
         // extended operations
         // 0xCB
-        // ???
+        (0xCB, I::new(Invalid("0xCB"), 1, 4)),
         // call nn if zero
         (
             0xCC,
@@ -912,8 +915,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
             I::new_ex(Jpc(FlagNc.imm(), Const16.imm()), 3, vec![16, 12]),
         ),
         // extended operations
-        // 0xD3
-        // ???
+        (0xD3, I::new(Invalid("0xD3"), 1, 4)),
         // call nn if no carry
         (
             0xD4,
@@ -924,8 +926,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // subtract n from A
         (0xD6, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x10
-        // 0xD7
-        // TODO: implement this
+        (0xD7, I::new(Rst(0x10), 1, 32)),
         // return if carry
         (0xD8, I::new_ex(Retc(FlagC.imm()), 1, vec![20, 8])),
         // return and enable interrupts
@@ -936,16 +937,14 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
             I::new_ex(Jpc(FlagC.imm(), Const16.imm()), 3, vec![16, 12]),
         ),
         // extended operations
-        // 0xDB
-        // ???
+        (0xDB, I::new(Invalid("0xDB"), 1, 4)),
         // call nn if carry
         (
             0xDC,
             I::new_ex(Callc(FlagC.imm(), Const16.imm()), 3, vec![24, 12]),
         ),
         // extended operations
-        // 0xDD
-        // ???
+        (0xDD, I::new(Invalid("0xDD"), 1, 4)),
         // subtract n from A with carry
         (0xDE, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x18
@@ -957,11 +956,9 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // load A into [0xFF + C]
         (0xE2, I::new(Ld(C.himem(), A.imm()), 1, 8)),
         // extended operations
-        // 0xE3
-        // ???
+        (0xE3, I::new(Invalid("0xE3"), 1, 4)),
         // extended operations
-        // 0xE4
-        // ???
+        (0xE4, I::new(Invalid("0xE4"), 1, 4)),
         // push HL
         (0xE5, I::new(Push(HL.imm()), 1, 16)),
         // and n with A
@@ -975,14 +972,11 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // load A into [nn]
         (0xEA, I::new(Ld(Const16.mem(), A.imm()), 3, 16)),
         // extended operations
-        // 0xEB
-        // ???
+        (0xEB, I::new(Invalid("0xEB"), 1, 4)),
         // extended operations
-        // 0xEC
-        // ???
+        (0xEC, I::new(Invalid("0xEC"), 1, 4)),
         // extended operations
-        // 0xED
-        // ???
+        (0xED, I::new(Invalid("0xED"), 1, 4)),
         // xor n with A
         (0xEE, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x28
@@ -996,8 +990,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // disable interrupts
         (0xF3, I::new(Di, 1, 4)),
         // extended operations
-        // 0xF4
-        // ???
+        (0xF4, I::new(Invalid("0xF4"), 1, 4)),
         // push AF
         (0xF5, I::new(Push(AF.imm()), 1, 16)),
         // or n with A
@@ -1013,11 +1006,9 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // enable interrupts
         (0xFB, I::new(Ei, 1, 4)),
         // extended operations
-        // 0xFC
-        // ???
+        (0xFC, I::new(Invalid("0xFC"), 1, 4)),
         // extended operations
-        // 0xFD
-        // ???
+        (0xFD, I::new(Invalid("0xFD"), 1, 4)),
         // compare n with A
         (0xFE, I::new(Cp(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x38

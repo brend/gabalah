@@ -24,6 +24,16 @@ impl From<u16> for Bytes {
     }
 }
 
+impl From<bool> for Bytes {
+    fn from(value: bool) -> Self {
+        if value {
+            Bytes::One(1)
+        } else {
+            Bytes::One(0)
+        }
+    }
+}
+
 impl Bytes {
     pub fn from_bytes(lo: u8, hi: u8) -> Self {
         Bytes::Two((hi as u16) << 8 | lo as u16)
@@ -106,12 +116,33 @@ impl Registers {
         }
     }
 
+    /// returns the value of the 16-bit AF register
+    pub fn af(&self) -> Bytes {
+        Bytes::from_bytes(self.f, self.a)
+    }
+
+    /// returns the value of the 16-bit BC register
+    pub fn bc(&self) -> Bytes {
+        Bytes::from_bytes(self.c, self.b)
+    }
+
+    /// returns the value of the 16-bit HL register
+    pub fn hl(&self) -> Bytes {
+        Bytes::from_bytes(self.l, self.h)
+    }
+
+    /// returns the value of the 16-bit DE register
+    pub fn de(&self) -> Bytes {
+        Bytes::from_bytes(self.e, self.d)
+    }
+
     /// sets the value of the 16-bit BC register
     pub fn set_bc(&mut self, bytes: &Bytes) {
         self.c = bytes.lo();
         self.b = bytes.hi();
     }
 
+    /// sets the value of the 16-bit HL register
     pub fn set_hl(&mut self, bytes: &Bytes) {
         self.l = bytes.lo();
         self.h = bytes.hi();
