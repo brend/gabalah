@@ -111,6 +111,11 @@ impl Registers {
         self.c = bytes.lo();
         self.b = bytes.hi();
     }
+
+    pub fn set_hl(&mut self, bytes: &Bytes) {
+        self.l = bytes.lo();
+        self.h = bytes.hi();
+    }
 }
 
 /// The size of the Game Boy's RAM in bytes

@@ -78,7 +78,7 @@ pub enum Mnemonic {
     /// Push
     Push(Operand),
     /// Restart
-    Rst,
+    Rst(u8),
     /// Return and enable interrupts
     Reti,
     /// Enable interrupts
@@ -428,8 +428,19 @@ impl Instruction {
                 dst.write(r, m, Bytes::from_bytes(hi, lo));
                 r.sp += 2;
             }
-            Rst => todo!(),
-            Ldhl(op) => todo!(),
+            Rst(dst) => {
+                let ret = r.pc;
+                m.set(Addr(r.sp - 1), (ret >> 8) as u8);
+                m.set(Addr(r.sp - 2), ret as u8);
+                r.sp -= 2;
+                r.pc = dst as u16;
+            }
+            Ldhl(op) => {
+                let offset = op.read(r, m).single().expect("expected single byte") as i8;
+                let sp = r.sp as i32;
+                let result = (sp + offset as i32) as u16;
+                r.set_hl(&Bytes::from(result));
+            }
         }
 
         if let Some(new_pc) = new_pc {
@@ -867,8 +878,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // add n to A
         (0xC6, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x00
-        // 0xC7
-        // TODO: implement this
+        (0xC7, I::new(Rst(0x00), 1, 32)),
         // return if zero
         (0xC8, I::new_ex(Retc(FlagZ.imm()), 1, vec![20, 8])),
         // return
@@ -891,8 +901,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // add n to A with carry
         (0xCE, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x08
-        // 0xCF
-        // TODO: implement this
+        (0xCF, I::new(Rst(0x08), 1, 32)),
         // return if no carry
         (0xD0, I::new_ex(Retc(FlagNc.imm()), 1, vec![20, 8])),
         // pop DE
@@ -940,8 +949,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // subtract n from A with carry
         (0xDE, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x18
-        // 0xDF
-        // TODO: implement this
+        (0xDF, I::new(Rst(0x18), 1, 32)),
         // load A into [0xFF + n]
         (0xE0, I::new(Ld(Const8.himem(), A.imm()), 2, 12)),
         // pop HL
@@ -959,8 +967,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // and n with A
         (0xE6, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x20
-        // 0xE7
-        // TODO: implement this
+        (0xE7, I::new(Rst(0x20), 1, 32)),
         // add SP to HL
         (0xE8, I::new(Add(SP.imm(), Const8.imm()), 2, 16)),
         // jump to HL
@@ -979,8 +986,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // xor n with A
         (0xEE, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x28
-        // 0xEF
-        // TODO: implement this
+        (0xEF, I::new(Rst(0x28), 1, 32)),
         // load [0xFF + n] into A
         (0xF0, I::new(Ld(A.imm(), Const8.himem()), 2, 12)),
         // pop AF
@@ -997,8 +1003,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // or n with A
         (0xF6, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x30
-        // 0xF7
-        // TODO: implement this
+        (0xF7, I::new(Rst(0x30), 1, 32)),
         // load SP + n into HL
         (0xF8, I::new(Ldhl(Const8.imm()), 2, 12)),
         // load HL into [SP]
@@ -1016,8 +1021,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // compare n with A
         (0xFE, I::new(Cp(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x38
-        // 0xFF
-        // TODO: implement this
+        (0xFF, I::new(Rst(0x38), 1, 32)),
     ]);
 
     map
