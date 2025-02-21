@@ -137,14 +137,14 @@ pub enum Location {
 use Location::*;
 
 impl Location {
-    /// Returns the number of bytes the location occupies
-    fn bytes(&self) -> usize {
-        match self {
-            A | B | C | D | E | H | L | FlagNz | FlagZ | FlagNc | FlagC => 1,
-            BC | HL | DE | SP | Const8 => 2,
-            AF | Const16 => 2,
-        }
-    }
+    // /// Returns the number of bytes the location occupies
+    // fn bytes(&self) -> usize {
+    //     match self {
+    //         A | B | C | D | E | H | L | FlagNz | FlagZ | FlagNc | FlagC => 1,
+    //         BC | HL | DE | SP | Const8 => 2,
+    //         AF | Const16 => 2,
+    //     }
+    // }
 
     /// Creates an immediate value operand from the location
     pub fn imm(&self) -> Operand {
@@ -307,14 +307,24 @@ impl Instruction {
                 let sum = alu::add(&dst_bytes, &src_bytes, &mut r.f);
                 dst.write(r, m, sum);
             }
-            Adc(dst, src) => todo!(),
+            Adc(dst, src) => {
+                let dst_bytes = dst.read(r, m);
+                let src_bytes = src.read(r, m);
+                let sum = alu::adc(&dst_bytes, &src_bytes, &mut r.f);
+                dst.write(r, m, sum);
+            }
             Sub(dst, src) => {
                 let dst_bytes = dst.read(r, m);
                 let src_bytes = src.read(r, m);
                 let difference = alu::sub(&dst_bytes, &src_bytes, &mut r.f);
                 dst.write(r, m, difference);
             }
-            Sbc(dst, src) => todo!(),
+            Sbc(dst, src) => {
+                let dst_bytes = dst.read(r, m);
+                let src_bytes = src.read(r, m);
+                let difference = alu::sbc(&dst_bytes, &src_bytes, &mut r.f);
+                dst.write(r, m, difference);
+            }
             Rlca => r.a = alu::rlc(r.a, &mut r.f),
             Rrca => r.a = alu::rrc(r.a, &mut r.f),
             Rla => r.a = alu::rl(r.a, &mut r.f),
@@ -330,7 +340,6 @@ impl Instruction {
                     new_pc = Some((r.pc as i32 + 2 + offset as i32) as u16);
                 }
             }
-            Stop(op) => todo!(),
             Daa => alu::daa(&mut r.a, &mut r.f),
             Cpl => {
                 r.a = !r.a;
@@ -342,7 +351,6 @@ impl Instruction {
                 r.f &= !SUBTRACTION_FLAG_BITMASK;
                 r.f &= !HALF_CARRY_FLAG_BITMASK;
             }
-            Halt => todo!(),
             And(dst, src) => {
                 let dst_byte = dst.read(r, m).single().expect("expected single byte");
                 let src_byte = src.read(r, m).single().expect("expected single byte");
@@ -380,7 +388,9 @@ impl Instruction {
                     r.pc = Bytes::from_bytes(lo, hi).word().unwrap();
                     r.sp += 2;
                 }
-            }            
+            }
+            Stop(op) => todo!(),
+            Halt => todo!(),          
             Reti => todo!(),
             Ei => todo!(),
             Di => todo!(),
