@@ -48,7 +48,7 @@ pub enum Mnemonic {
     /// Complement A
     Cpl,
     /// Set Carry flag
-    Scf(Operand),
+    Scf,
     /// Complement Carry flag
     Ccf,
     /// Halt
@@ -329,25 +329,64 @@ impl Instruction {
                 let offset = offset.read(r, m).single().expect("expected single byte") as i8;
                 new_pc = Some((r.pc as i32 + 2 + offset as i32) as u16);
             }
-            Jrc(condition, offset) => {
-                let flag = condition.read(r, m).single().expect("expected single byte");
+            Jrc(cc, offset) => {
+                let flag = cc.read(r, m).single().expect("expected single byte");
                 let offset = offset.read(r, m).single().expect("expected single byte") as i8;
-                if flag == 0 {
+                if flag == 1 {
                     new_pc = Some((r.pc as i32 + 2 + offset as i32) as u16);
                 }
             }
             Stop(op) => todo!(),
             Daa => alu::daa(&mut r.a, &mut r.f),
-            Cpl => todo!(),
-            Scf(op) => todo!(),
-            Ccf => todo!(),
+            Cpl => {
+                r.a = !r.a;
+                r.f |= SUBTRACTION_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK;
+            },
+            Scf => r.f |= CARRY_FLAG_BITMASK,
+            Ccf => {
+                r.f ^= CARRY_FLAG_BITMASK;
+                r.f &= !SUBTRACTION_FLAG_BITMASK;
+                r.f &= !HALF_CARRY_FLAG_BITMASK;
+            }
             Halt => todo!(),
-            And(dst, src) => todo!(),
-            Xor(dst, src) => todo!(),
-            Or(dst, src) => todo!(),
-            Cp(dst, src) => todo!(),
-            Ret => todo!(),
-            Retc(op) => todo!(),
+            And(dst, src) => {
+                let dst_byte = dst.read(r, m).single().expect("expected single byte");
+                let src_byte = src.read(r, m).single().expect("expected single byte");
+                let result = alu::and(dst_byte, src_byte, &mut r.f);
+                dst.write(r, m, result.into());
+            }
+            Xor(dst, src) => {
+                let dst_byte = dst.read(r, m).single().expect("expected single byte");
+                let src_byte = src.read(r, m).single().expect("expected single byte");
+                let result = alu::xor(dst_byte, src_byte, &mut r.f);
+                dst.write(r, m, result.into());
+            },
+            Or(dst, src) => {
+                let dst_byte = dst.read(r, m).single().expect("expected single byte");
+                let src_byte = src.read(r, m).single().expect("expected single byte");
+                let result = alu::or(dst_byte, src_byte, &mut r.f);
+                dst.write(r, m, result.into());
+            },
+            Cp(dst, src) => {
+                let dst_byte = dst.read(r, m).single().expect("expected single byte");
+                let src_byte = src.read(r, m).single().expect("expected single byte");
+                alu::cp(dst_byte, src_byte, &mut r.f);
+            },
+            Ret => {
+                let lo = m.get(Addr(r.sp));
+                let hi = m.get(Addr(r.sp + 1));
+                r.pc = Bytes::from_bytes(lo, hi).word().unwrap();
+                r.sp += 2;
+            }
+            Retc(cc) => {
+                let flag = cc.read(r, m).single().expect("expected single byte");
+                if flag == 1 {
+                    let lo = m.get(Addr(r.sp));
+                    let hi = m.get(Addr(r.sp + 1));
+                    r.pc = Bytes::from_bytes(lo, hi).word().unwrap();
+                    r.sp += 2;
+                }
+            }
             Jp(dst) => todo!(),
             Jpc(condition, dst) => todo!(),
             Call(dst) => todo!(),
@@ -492,7 +531,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // load n into (HL)
         (0x36, I::new(Ld(HL.mem(), Const8.imm()), 2, 12)),
         // set C flag
-        (0x37, I::new(Scf(FlagC.imm()), 1, 4)),
+        (0x37, I::new(Scf, 1, 4)),
         // jump relative if C flag is set
         (0x38, I::new_ex(Jrc(FlagC.imm(), Const8.imm()), 2, vec![12, 8])),
         // add SP to HL

@@ -199,3 +199,38 @@ pub fn daa(a: &mut u8, f: &mut u8) {
     f.set_zero(*a == 0);
     f.set_half_carry(false);
 }
+
+pub fn and(value1: u8, value2: u8, flags: &mut u8) -> u8 {
+    let result = value1 & value2;
+    flags.set_zero(result == 0);
+    flags.set_subtraction(false);
+    flags.set_half_carry(true);
+    flags.set_carry(false);
+    result
+}
+
+pub fn xor(value1: u8, value2: u8, flags: &mut u8) -> u8 {
+    let result = value1 ^ value2;
+    flags.set_zero(result == 0);
+    flags.set_subtraction(false);
+    flags.set_half_carry(false);
+    flags.set_carry(false);
+    result
+}
+
+pub fn or(value1: u8, value2: u8, flags: &mut u8) -> u8 {
+    let result = value1 | value2;
+    flags.set_zero(result == 0);
+    flags.set_subtraction(false);
+    flags.set_half_carry(false);
+    flags.set_carry(false);
+    result
+}
+
+pub fn cp(value1: u8, value2: u8, flags: &mut u8) {
+    let result = value1.wrapping_sub(value2);
+    flags.set_zero(result == 0);
+    flags.set_subtraction(true);
+    flags.set_half_carry((value1 & 0x0F) < (value2 & 0x0F));
+    flags.set_carry(value1 < value2);
+}

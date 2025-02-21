@@ -36,6 +36,13 @@ impl Bytes {
         }
     }
 
+    pub fn word(&self) -> Option<u16> {
+        match self {
+            Bytes::Two(value) => Some(*value),
+            _ => None,
+        }
+    }
+
     pub fn is_one(&self) -> bool {
         match self {
             Bytes::One(_) => true,
