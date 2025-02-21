@@ -1,10 +1,5 @@
-/// Create a 16-bit word from two 8-bit values
-fn word(lo: u8, hi: u8) -> u16 {
-    (hi as u16) << 8 | lo as u16
-}
-
 /// A binary value that can be either 8 or 16 bits
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Bytes {
     /// An 8-bit value
     One(u8),
@@ -217,11 +212,5 @@ impl Ram {
     /// Retrieves the byte at the specified address
     pub fn get(&self, address: Addr) -> u8 {
         self.cells[address.0 as usize]
-    }
-
-    /// Retrieves the word at the specified address
-    pub fn get_word(&self, address: Addr) -> Option<u16> {
-        let next = address.next()?;
-        Some(word(self.get(address), self.get(next)))
     }
 }
