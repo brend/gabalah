@@ -516,8 +516,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // restart from 0x20
         (0xE7, I::new(Rst(0x20), 1, 32)),
         // add n to SP
-        // (0xE8, I::new(Add(SP.imm(), Const8.imm()), 2, 16)),
-        (0xE8, todo!()),
+        (0xE8, I::new(Add(SP.imm(), Const8.imm()), 2, 16)),
         // jump to HL
         (0xE9, I::new(Jp(HL.imm()), 1, 4)),
         // load A into [nn]
@@ -565,6 +564,6 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // restart from 0x38
         (0xFF, I::new(Rst(0x38), 1, 32)),
     ]);
-
+    
     map
 }

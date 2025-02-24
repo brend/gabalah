@@ -98,23 +98,6 @@ pub fn lo(word: u16) -> u8 {
 #[derive(Copy, Clone, Debug)]
 pub struct Addr(pub u16);
 
-impl Addr {
-    /// Returns the byte address following this one
-    pub fn next(&self) -> Option<Addr> {
-        if self.0 < u16::MAX {
-            Some(Addr(self.0 + 1))
-        } else {
-            None
-        }
-    }
-
-    /// Increases this byte address by one
-    pub fn inc(&mut self) {
-        assert!(self.0 < u16::MAX);
-        self.0 += 1;
-    }
-}
-
 /// The Game Boy's random-access memory
 #[derive(Debug)]
 pub struct Ram {

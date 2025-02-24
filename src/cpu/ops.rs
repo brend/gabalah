@@ -1,10 +1,7 @@
 use std::{collections::HashMap, vec};
 
-use log::debug;
-
 use super::alu::{self, Flags};
 use crate::memory::{Addr, Ram, Registers};
-use crate::cpu::map;
 
 pub const ZERO_FLAG_BITMASK: u8 = 1 << 7;
 pub const SUBTRACTION_FLAG_BITMASK: u8 = 1 << 6;
@@ -269,7 +266,7 @@ impl Operand {
         }
     }
 
-    fn write_word(&self, registers: &mut Registers, memory: &mut Ram, value: u16) {
+    fn write_word(&self, registers: &mut Registers, _memory: &mut Ram, value: u16) {
         match self {
             Operand::Immediate(loc) => loc.write_word(registers, value),
             _ => panic!("Invalid operand size"),
@@ -458,7 +455,7 @@ impl Instruction {
                     r.sp += 2;
                 }
             }
-            Stop(op) => todo!(),
+            Stop(_op) => todo!(),
             Halt => todo!(),          
             Reti => todo!(),
             Ei => todo!(),
