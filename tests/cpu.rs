@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use gabalah::memory::{Bytes, Registers};
+    use gabalah::memory::Registers;
 
     fn setup() -> Registers {
         Registers::default()
@@ -11,6 +11,6 @@ mod tests {
         let mut registers = setup();
         registers.a = 0x42;
         registers.f = 0x43;
-        assert_eq!(registers.af(), Bytes::from_bytes(0x43, 0x42));
+        assert_eq!(registers.af(), 0x4243);
     }
 }

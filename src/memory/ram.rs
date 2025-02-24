@@ -1,80 +1,5 @@
-/// A binary value that can be either 8 or 16 bits
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Bytes {
-    /// An 8-bit value
-    One(u8),
-    /// A 16-bit value
-    Two(u16),
-}
-
-impl From<u8> for Bytes {
-    fn from(value: u8) -> Self {
-        Bytes::One(value)
-    }
-}
-
-impl From<u16> for Bytes {
-    fn from(value: u16) -> Self {
-        Bytes::Two(value)
-    }
-}
-
-impl From<bool> for Bytes {
-    fn from(value: bool) -> Self {
-        if value {
-            Bytes::One(1)
-        } else {
-            Bytes::One(0)
-        }
-    }
-}
-
-impl Bytes {
-    pub fn from_bytes(lo: u8, hi: u8) -> Self {
-        Bytes::Two((hi as u16) << 8 | lo as u16)
-    }
-
-    pub fn single(&self) -> Option<u8> {
-        match self {
-            Bytes::One(value) => Some(*value),
-            _ => None,
-        }
-    }
-
-    pub fn word(&self) -> Option<u16> {
-        match self {
-            Bytes::Two(value) => Some(*value),
-            _ => None,
-        }
-    }
-
-    pub fn is_one(&self) -> bool {
-        match self {
-            Bytes::One(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_two(&self) -> bool {
-        match self {
-            Bytes::Two(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn lo(&self) -> u8 {
-        match self {
-            Bytes::Two(value) => lo(*value),
-            _ => panic!("Expected a 16-bit value"),
-        }
-    }
-
-    pub fn hi(&self) -> u8 {
-        match self {
-            Bytes::Two(value) => hi(*value),
-            _ => panic!("Expected a 16-bit value"),
-        }
-    }
+pub fn word(hi: u8, lo: u8) -> u16 {
+    ((hi as u16) << 8) | lo as u16
 }
 
 /// The Game Boy's CPU registers
@@ -112,35 +37,47 @@ impl Registers {
     }
 
     /// returns the value of the 16-bit AF register
-    pub fn af(&self) -> Bytes {
-        Bytes::from_bytes(self.f, self.a)
+    pub fn af(&self) -> u16 {
+        word(self.a, self.f)
     }
 
     /// returns the value of the 16-bit BC register
-    pub fn bc(&self) -> Bytes {
-        Bytes::from_bytes(self.c, self.b)
+    pub fn bc(&self) -> u16 {
+        word(self.b, self.c)
     }
 
     /// returns the value of the 16-bit HL register
-    pub fn hl(&self) -> Bytes {
-        Bytes::from_bytes(self.l, self.h)
+    pub fn hl(&self) -> u16 {
+        word(self.h, self.l)
     }
 
     /// returns the value of the 16-bit DE register
-    pub fn de(&self) -> Bytes {
-        Bytes::from_bytes(self.e, self.d)
+    pub fn de(&self) -> u16 {
+        word(self.d, self.e)
+    }
+
+    /// sets the value of the 16-bit AF register
+    pub fn set_af(&mut self, value: u16) {
+        self.a = hi(value);
+        self.f = lo(value);
     }
 
     /// sets the value of the 16-bit BC register
-    pub fn set_bc(&mut self, bytes: &Bytes) {
-        self.c = bytes.lo();
-        self.b = bytes.hi();
+    pub fn set_bc(&mut self, value: u16) {
+        self.b = hi(value);
+        self.c = lo(value);
+    }
+
+    /// sets the value of the 16-bit DE register
+    pub fn set_de(&mut self, value: u16) {
+        self.d = hi(value);
+        self.e = lo(value);
     }
 
     /// sets the value of the 16-bit HL register
-    pub fn set_hl(&mut self, bytes: &Bytes) {
-        self.l = bytes.lo();
-        self.h = bytes.hi();
+    pub fn set_hl(&mut self, value: u16) {
+        self.h = hi(value);
+        self.l = lo(value);
     }
 }
 
@@ -178,12 +115,6 @@ impl Addr {
     }
 }
 
-impl From<Bytes> for Addr {
-    fn from(bytes: Bytes) -> Self {
-        Addr((bytes.hi() as u16) << 8 | bytes.lo() as u16)
-    }
-}
-
 /// The Game Boy's random-access memory
 #[derive(Debug)]
 pub struct Ram {
@@ -197,20 +128,24 @@ impl Ram {
     }
 
     /// Sets the byte at the specified address to the specified value
-    pub fn set(&mut self, address: Addr, value: u8) {
+    pub fn write_byte(&mut self, address: Addr, value: u8) {
         self.cells[address.0 as usize] = value;
     }
 
     /// Sets the word at the specified address to the specified value
-    pub fn set_word(&mut self, address: Addr, values: &Bytes) {
-        debug_assert!(values.is_two());
+    pub fn write_word(&mut self, address: Addr, value: u16) {
         debug_assert!(address.0 < u16::MAX);
-        self.cells[address.0 as usize] = values.lo();
-        self.cells[address.0 as usize + 1] = values.hi();
+        self.cells[address.0 as usize] = lo(value);
+        self.cells[address.0 as usize + 1] = hi(value);
     }
 
     /// Retrieves the byte at the specified address
-    pub fn get(&self, address: Addr) -> u8 {
+    pub fn read_byte(&self, address: Addr) -> u8 {
         self.cells[address.0 as usize]
+    }
+
+    pub fn read_word(&self, address: Addr) -> u16 {
+        debug_assert!(address.0 < u16::MAX);
+        word(self.cells[address.0 as usize + 1], self.cells[address.0 as usize])
     }
 }

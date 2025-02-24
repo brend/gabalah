@@ -1,5 +1,3 @@
-use crate::memory::Bytes;
-
 use super::{CARRY_FLAG_BITMASK, HALF_CARRY_FLAG_BITMASK, SUBTRACTION_FLAG_BITMASK, ZERO_FLAG_BITMASK};
 
 pub trait Flags {
@@ -63,124 +61,100 @@ impl Flags for u8 {
     }
 }
 
-pub fn inc(value: &Bytes, flags: &mut u8) -> Bytes {
-    match value {
-        Bytes::One(value) => {
-            let result = value.wrapping_add(1);
-            flags.set_zero(result == 0);
-            flags.set_subtraction(false);
-            flags.set_half_carry((value & 0x0F) + 1 > 0x0F);
-            result.into()
-        },
-        Bytes::Two(value) => {
-            let result = value.wrapping_add(1);
-            result.into()
-        }
-    }
+pub fn inc8(value: u8, flags: &mut u8) -> u8 {
+    let result = value.wrapping_add(1);
+    flags.set_zero(result == 0);
+    flags.set_subtraction(false);
+    flags.set_half_carry((value & 0x0F) + 1 > 0x0F);
+    result.into()
 }
 
-pub fn dec(value: &Bytes, flags: &mut u8) -> Bytes {
-    match value {
-        Bytes::One(value) => {
-            let result = value.wrapping_sub(1);
-            flags.set_zero(result == 0);
-            flags.set_subtraction(true);
-            flags.set_half_carry((value & 0x0F) == 0);
-            result.into()
-        },
-        Bytes::Two(value) => {
-            let result = value.wrapping_sub(1);
-            result.into()
-        }
-    }
+pub fn inc16(value: u16) -> u16 {
+    value.wrapping_add(1)
 }
 
-pub fn add(value1: &Bytes, value2: &Bytes, flags: &mut u8) -> Bytes {
-    match (value1, value2) {
-        (Bytes::One(value1), Bytes::One(value2)) => {
-            let result = value1.wrapping_add(*value2);
-            flags.set_zero(result == 0);
-            flags.set_subtraction(false);
-            flags.set_half_carry((value1 & 0x0F) + (value2 & 0x0F) > 0x0F);
-            flags.set_carry((*value1 as u16) + (*value2 as u16) > 0xFF);
-            result.into()
-        },
-        (Bytes::Two(value1), Bytes::Two(value2)) => {
-            let result = value1.wrapping_add(*value2);
-            flags.set_subtraction(false);
-            flags.set_half_carry((value1 & 0x0FFF) + (value2 & 0x0FFF) > 0x0FFF);
-            flags.set_carry((*value1 as u32) + (*value2 as u32) > 0xFFFF);
-            result.into()
-        },
-        _ => panic!("Invalid arguments")
-    }
+pub fn dec8(value: u8, flags: &mut u8) -> u8 {
+    let result = value.wrapping_sub(1);
+    flags.set_zero(result == 0);
+    flags.set_subtraction(true);
+    flags.set_half_carry((value & 0x0F) == 0);
+    result
 }
 
-pub fn adc(value1: &Bytes, value2: &Bytes, flags: &mut u8) -> Bytes {
-    match (value1, value2) {
-        (Bytes::One(value1), Bytes::One(value2)) => {
-            let carry = flags.carry() as u8;
-            let result = value1.wrapping_add(*value2).wrapping_add(carry);
-            flags.set_zero(result == 0);
-            flags.set_subtraction(false);
-            flags.set_half_carry((value1 & 0x0F) + (value2 & 0x0F) + carry > 0x0F);
-            flags.set_carry((*value1 as u16) + (*value2 as u16) + (carry as u16) > 0xFF);
-            result.into()
-        },
-        (Bytes::Two(value1), Bytes::Two(value2)) => {
-            let carry = flags.carry() as u16;
-            let result = value1.wrapping_add(*value2).wrapping_add(carry);
-            flags.set_subtraction(false);
-            flags.set_half_carry((value1 & 0x0FFF) + (value2 & 0x0FFF) + carry > 0x0FFF);
-            flags.set_carry((*value1 as u32) + (*value2 as u32) + (carry as u32) > 0xFFFF);
-            result.into()
-        },
-        _ => panic!("Invalid arguments")
-    }
+pub fn dec16(value: u16) -> u16 {
+    value.wrapping_sub(1)
 }
 
-pub fn sub(value1: &Bytes, value2: &Bytes, flags: &mut u8) -> Bytes {
-    match (value1, value2) {
-        (Bytes::One(value1), Bytes::One(value2)) => {
-            let result = value1.wrapping_sub(*value2);
+pub fn add8(value1: u8, value2: u8, flags: &mut u8) -> u8 {
+    let result = value1.wrapping_add(value2);
+    flags.set_zero(result == 0);
+    flags.set_subtraction(false);
+    flags.set_half_carry((value1 & 0x0F) + (value2 & 0x0F) > 0x0F);
+    flags.set_carry((value1 as u16) + (value2 as u16) > 0xFF);
+    result
+}
+
+pub fn add16(value1: u16, value2: u16, flags: &mut u8) -> u16 {
+    let result = value1.wrapping_add(value2);
+    flags.set_subtraction(false);
+    flags.set_half_carry((value1 & 0x0FFF) + (value2 & 0x0FFF) > 0x0FFF);
+    flags.set_carry((value1 as u32) + (value2 as u32) > 0xFFFF);
+    result
+} 
+
+pub fn adc8(value1: u8, value2: u8, flags: &mut u8) -> u8 {
+    let carry = flags.carry() as u8;
+    let result = value1.wrapping_add(value2).wrapping_add(carry);
+    flags.set_zero(result == 0);
+    flags.set_subtraction(false);
+    flags.set_half_carry((value1 & 0x0F) + (value2 & 0x0F) + carry > 0x0F);
+    flags.set_carry((value1 as u16) + (value2 as u16) + (carry as u16) > 0xFF);
+    result
+}
+
+pub fn adc16(value1: u16, value2: u16, flags: &mut u8) -> u16 {
+    let carry = flags.carry() as u16;
+    let result = value1.wrapping_add(value2).wrapping_add(carry);
+    flags.set_subtraction(false);
+    flags.set_half_carry((value1 & 0x0FFF) + (value2 & 0x0FFF) + carry > 0x0FFF);
+    flags.set_carry((value1 as u32) + (value2 as u32) + (carry as u32) > 0xFFFF);
+    result
+}
+
+pub fn sub8(value1: u8, value2: u8, flags: &mut u8) -> u8 {
+            let result = value1.wrapping_sub(value2);
             flags.set_zero(result == 0);
             flags.set_subtraction(true);
             flags.set_half_carry((value1 & 0x0F) + (value2 & 0x0F) > 0x0F);
-            flags.set_carry(*value1 < *value2);
-            result.into()
-        },
-        (Bytes::Two(value1), Bytes::Two(value2)) => {
-            let result = value1.wrapping_sub(*value2);
-            flags.set_subtraction(true);
-            flags.set_half_carry((value1 & 0x0FFF) + (value2 & 0x0FFF) > 0x0FFF);
-            flags.set_carry(*value1 < *value2);
-            result.into()
-        },
-        _ => panic!("Invalid arguments")
-    }
+            flags.set_carry(value1 < value2);
+            result
 }
 
-pub fn sbc(value1: &Bytes, value2: &Bytes, flags: &mut u8) -> Bytes {
-    match (value1, value2) {
-        (Bytes::One(value1), Bytes::One(value2)) => {
-            let carry = flags.carry() as u8;
-            let result = value1.wrapping_sub(*value2).wrapping_sub(carry);
-            flags.set_zero(result == 0);
-            flags.set_subtraction(true);
-            flags.set_half_carry((value1 & 0x0F) < (value2 & 0x0F) + carry);
-            flags.set_carry(*value1 < *value2 + carry);
-            result.into()
-        },
-        (Bytes::Two(value1), Bytes::Two(value2)) => {
-            let carry = flags.carry() as u16;
-            let result = value1.wrapping_sub(*value2).wrapping_sub(carry);
-            flags.set_subtraction(true);
-            flags.set_half_carry((value1 & 0x0FFF) < (value2 & 0x0FFF) + carry);
-            flags.set_carry(*value1 < *value2 + carry);
-            result.into()
-        },
-        _ => panic!("Invalid arguments")
-    }
+pub fn sub16(value1: u16, value2: u16, flags: &mut u8) -> u16 {
+    let result = value1.wrapping_sub(value2);
+    flags.set_subtraction(true);
+    flags.set_half_carry((value1 & 0x0FFF) + (value2 & 0x0FFF) > 0x0FFF);
+    flags.set_carry(value1 < value2);
+    result
+}
+
+pub fn sbc8(value1: u8, value2: u8, flags: &mut u8) -> u8 {
+    let carry = flags.carry() as u8;
+    let result = value1.wrapping_sub(value2).wrapping_sub(carry);
+    flags.set_zero(result == 0);
+    flags.set_subtraction(true);
+    flags.set_half_carry((value1 & 0x0F) < (value2 & 0x0F) + carry);
+    flags.set_carry(value1 < value2 + carry);
+    result
+}
+
+pub fn sbc16(value1: u16, value2: u16, flags: &mut u8) -> u16 {
+    let carry = flags.carry() as u16;
+    let result = value1.wrapping_sub(value2).wrapping_sub(carry);
+    flags.set_subtraction(true);
+    flags.set_half_carry((value1 & 0x0FFF) < (value2 & 0x0FFF) + carry);
+    flags.set_carry(value1 < value2 + carry);
+    result
 }
 
 pub fn rlc(value: u8, flags: &mut u8) -> u8 {

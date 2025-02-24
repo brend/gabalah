@@ -14,8 +14,8 @@ mod tests {
     fn test_ld_immediate() {
         let (mut registers, mut memory) = setup();
         let instruction = Instruction::new(Mnemonic::Ld(Location::A.imm(), Location::Const8.imm()), 2, 8);
-        memory.set(Addr(0x100), 0x42);
-        memory.set(Addr(registers.pc + 1), 0x42);
+        memory.write_byte(Addr(0x100), 0x42);
+        memory.write_byte(Addr(registers.pc + 1), 0x42);
         instruction.execute(&mut memory, &mut registers);
         assert_eq!(registers.a, 0x42);
     }
@@ -65,7 +65,7 @@ mod tests {
         let (mut registers, mut memory) = setup();
         registers.a = 0x10;
         let instruction = Instruction::new(Mnemonic::Add(Location::A.imm(), Location::Const8.imm()), 1, 4);
-        memory.set(Addr(registers.pc + 1), 0x05);
+        memory.write_byte(Addr(registers.pc + 1), 0x05);
         instruction.execute(&mut memory, &mut registers);
         assert_eq!(registers.a, 0x15);
     }
@@ -75,7 +75,7 @@ mod tests {
         let (mut registers, mut memory) = setup();
         registers.a = 0xFF;
         let instruction = Instruction::new(Mnemonic::Add(Location::A.imm(), Location::Const8.imm()), 1, 4);
-        memory.set(Addr(registers.pc + 1), 0x01);
+        memory.write_byte(Addr(registers.pc + 1), 0x01);
         instruction.execute(&mut memory, &mut registers);
         assert_eq!(registers.a, 0x00);
         assert_eq!(registers.f, ZERO_FLAG_BITMASK | CARRY_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK);
@@ -86,7 +86,7 @@ mod tests {
         let (mut registers, mut memory) = setup();
         registers.a = 0x10;
         let instruction = Instruction::new(Mnemonic::Sub(Location::A.imm(), Location::Const8.imm()), 1, 4);
-        memory.set(Addr(registers.pc + 1), 0x05);
+        memory.write_byte(Addr(registers.pc + 1), 0x05);
         instruction.execute(&mut memory, &mut registers);
         assert_eq!(registers.a, 0x0B, "unexpected result");
         assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK, "unexpected flags");
@@ -97,7 +97,7 @@ mod tests {
         let (mut registers, mut memory) = setup();
         registers.a = 0x10;
         let instruction = Instruction::new(Mnemonic::Sub(Location::A.imm(), Location::Const8.imm()), 1, 4);
-        memory.set(Addr(registers.pc + 1), 0x10);
+        memory.write_byte(Addr(registers.pc + 1), 0x10);
         instruction.execute(&mut memory, &mut registers);
         assert_eq!(registers.a, 0x00);
         assert_eq!(registers.f, SUBTRACTION_FLAG_BITMASK | ZERO_FLAG_BITMASK);
@@ -108,7 +108,7 @@ mod tests {
         let (mut registers, mut memory) = setup();
         registers.pc = 0x100;
         let instruction = Instruction::new(Mnemonic::Jr(Location::Const8.imm()), 2, 12);
-        memory.set(Addr(0x101), 0x05);
+        memory.write_byte(Addr(0x101), 0x05);
         instruction.execute(&mut memory, &mut registers);
         assert_eq!(registers.pc, 0x100 + 2 + 5);
     }
@@ -119,7 +119,7 @@ mod tests {
         registers.pc = 0x100;
         registers.f = 0x0;
         let instruction = Instruction::new(Mnemonic::Jrc(Location::FlagNz.imm(), Location::Const8.imm()), 2, 12);
-        memory.set(Addr(0x101), 0xFD);
+        memory.write_byte(Addr(0x101), 0xFD);
         instruction.execute(&mut memory, &mut registers);
         assert_eq!(registers.pc, 0x100 + 2 - 3);
     }
@@ -130,7 +130,7 @@ mod tests {
         registers.pc = 0x100;
         registers.f = ZERO_FLAG_BITMASK;
         let instruction = Instruction::new(Mnemonic::Jrc(Location::FlagNz.imm(), Location::Const8.imm()), 2, 12);
-        memory.set(Addr(0x101), 0xFD);
+        memory.write_byte(Addr(0x101), 0xFD);
         instruction.execute(&mut memory, &mut registers);
         assert_eq!(registers.pc, 0x100 + 2);
     }

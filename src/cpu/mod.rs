@@ -1,6 +1,7 @@
 mod cpu;
 mod ops;
 mod alu;
+mod map;
 
 pub use cpu::run;
 pub use alu::Flags;
