@@ -3,6 +3,12 @@ mod err;
 mod cpu;
 mod memory;
 
+use cpu::Cpu;
+
 fn main()  {
-    cpu::run();
+    let mut cpu = Cpu::new();
+
+    loop {
+        cpu.step();
+    }
 }
