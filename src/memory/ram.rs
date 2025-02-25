@@ -1,3 +1,5 @@
+const ROM_SIZE: usize = 32 * 1024;
+
 pub fn word(hi: u8, lo: u8) -> u16 {
     ((hi as u16) << 8) | lo as u16
 }
@@ -108,6 +110,15 @@ impl Ram {
     /// Returns an instance of zeroed Ram
     pub fn new() -> Ram {
         Ram { cells: [0; RAM_SIZE] }
+    }
+
+    /// Loads a ROM into memory
+    pub fn load_rom(&mut self, rom: Vec<u8>) {
+        assert!(rom.len() <= ROM_SIZE, "maximum ROM size exceeded");
+        let base_addr = 0x100;
+        for (i, byte) in rom.iter().enumerate() {
+            self.cells[base_addr + i] = *byte;
+        }
     }
 
     /// Sets the byte at the specified address to the specified value

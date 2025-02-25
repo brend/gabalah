@@ -22,6 +22,11 @@ impl Cpu {
         }
     }
 
+    /// Loads a program into memory
+    pub fn load_rom(&mut self, rom: Vec<u8>) {
+        self.memory.load_rom(rom);
+    }
+
     /// Executes the next instruction
     pub fn step(&mut self) {
         let opcode = self.memory.read_byte(Addr(self.registers.pc));
@@ -171,13 +176,13 @@ impl Cpu {
                 alu::cp(dst_byte, src_byte, &mut r.f);
             }
             Ret => {
-                r.pc = m.read_word(Addr(r.sp));
+                new_pc = Some(m.read_word(Addr(r.sp)));
                 r.sp += 2;
             }
             Retc(cc) => {
                 let flag = cc.read_byte(r, m);
                 if flag == 1 {
-                    r.pc = m.read_word(Addr(r.sp));
+                    new_pc = Some(m.read_word(Addr(r.sp)));
                     r.sp += 2;
                 }
             }
@@ -188,13 +193,13 @@ impl Cpu {
             Di => todo!(),
             Jp(dst) => {
                 debug_assert!(dst.target_size() == 2);
-                r.pc = dst.read_word(r, m);
+                new_pc = Some(dst.read_word(r, m));
             }
             Jpc(cc, dst) => {
                 debug_assert!(dst.target_size() == 2);
                 let flag = cc.read_byte(r, m);
                 if flag == 1 {
-                    r.pc = dst.read_word(r, m);
+                    new_pc = Some(dst.read_word(r, m));
                 }
             }
             Call(dst) => {
@@ -202,7 +207,7 @@ impl Cpu {
                 let ret = r.pc + 2;
                 m.write_word(Addr(r.sp - 2), ret);
                 r.sp -= 2;
-                r.pc = dst.read_word(r, m);
+                new_pc = Some(dst.read_word(r, m));
             }
             Callc(condition, dst) => {
                 debug_assert!(dst.target_size() == 2);
@@ -211,7 +216,7 @@ impl Cpu {
                     let ret = r.pc + 2;
                     m.write_word(Addr(r.sp - 2), ret);
                     r.sp -= 2;
-                    r.pc = dst.read_word(r, m);
+                    new_pc = Some(dst.read_word(r, m));
                 }
             }
             Push(src) => {
@@ -228,7 +233,7 @@ impl Cpu {
                 m.write_byte(Addr(r.sp - 1), (ret >> 8) as u8);
                 m.write_byte(Addr(r.sp - 2), ret as u8);
                 r.sp -= 2;
-                r.pc = dst as u16;
+                new_pc = Some(dst as u16);
             }
             Ldhl(op) => {
                 let offset = op.read_byte(r, m) as i8;
