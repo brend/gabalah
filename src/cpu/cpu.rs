@@ -188,7 +188,11 @@ impl Cpu {
             }
             Stop(_op) => todo!(),
             Halt => todo!(),          
-            Reti => todo!(),
+            Reti => {
+                new_pc = Some(m.read_word(Addr(r.sp)));
+                r.sp += 2;
+                r.ime = true;
+            }
             Ei => todo!(),
             Di => todo!(),
             Jp(dst) => {

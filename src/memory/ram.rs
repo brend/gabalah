@@ -27,6 +27,8 @@ pub struct Registers {
     pub sp: u16,
     /// program counter
     pub pc: u16,
+    /// interrupt master enable
+    pub ime: bool,
 }
 
 impl Registers {
