@@ -10,6 +10,7 @@ pub struct Cpu {
     pub memory: Ram,
     pub registers: Registers,
     opcode_map: HashMap<u8, Instruction>,
+    ime_activation_countdown: i32,
 }
 
 impl Cpu {
@@ -19,6 +20,7 @@ impl Cpu {
             memory: Ram::new(),
             registers: Registers::new(),
             opcode_map: map::build_opcode_map(),
+            ime_activation_countdown: 0,
         }
     }
 
@@ -39,6 +41,13 @@ impl Cpu {
         let mut new_pc = None;
         let r = &mut self.registers;
         let m = &mut self.memory;
+
+        if self.ime_activation_countdown > 0 {
+            self.ime_activation_countdown -= 1;
+            if self.ime_activation_countdown == 0 {
+                r.ime = true;
+            }
+        }   
 
         match instruction.mnemonic {
             Nop => (),
@@ -193,8 +202,8 @@ impl Cpu {
                 r.sp += 2;
                 r.ime = true;
             }
-            Ei => todo!(),
-            Di => todo!(),
+            Ei => self.ime_activation_countdown = 2,
+            Di => r.ime = false,
             Jp(dst) => {
                 debug_assert!(dst.target_size() == 2);
                 new_pc = Some(dst.read_word(r, m));
