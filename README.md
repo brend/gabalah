@@ -12,10 +12,10 @@ to learn more.
 
 ## Build and run
 
-Build and run Gabalah with
+Gabalah expects a path to a ROM file as its single command line argument.
 
 ``` sh
-$ cargo run
+$ cargo run path/to/some_rom.gb
 ```
 
 ## Running tests
