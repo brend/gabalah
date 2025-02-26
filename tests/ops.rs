@@ -2,7 +2,7 @@
 mod tests {
     use gabalah::cpu::{Cpu, Instruction, Location, Mnemonic};
     use gabalah::cpu::{ZERO_FLAG_BITMASK, SUBTRACTION_FLAG_BITMASK, HALF_CARRY_FLAG_BITMASK, CARRY_FLAG_BITMASK};
-    use gabalah::memory::{Registers, Ram, Addr};
+    use gabalah::memory::Addr;
 
     fn setup() -> Cpu {
         Cpu::new()

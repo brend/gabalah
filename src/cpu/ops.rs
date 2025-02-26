@@ -1,6 +1,6 @@
-use std::{collections::HashMap, vec};
+use std::vec;
 
-use super::alu::{self, Flags};
+use super::alu::Flags;
 use crate::memory::{Addr, Ram, Registers};
 
 pub const ZERO_FLAG_BITMASK: u8 = 1 << 7;
@@ -296,10 +296,5 @@ impl Instruction {
     /// Creates a new instruction
     pub fn new(mnemonic: Mnemonic, bytes: usize, cycles: usize) -> Instruction {
         Instruction::new_ex(mnemonic, bytes, vec![cycles])
-    }
-
-    /// Decodes an instruction from its opcode and the provided opcode map
-    pub fn decode(opcode: u8, opcode_map: &HashMap<u8, Instruction>) -> Option<Instruction> {
-        opcode_map.get(&opcode).cloned()
     }
 }
