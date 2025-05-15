@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 use error_iter::ErrorIter as _;
+use crate::cpu::Cpu;
 use log::{debug, error};
 use pixels::{Error, Pixels, SurfaceTexture};
 use winit::{
@@ -16,7 +17,7 @@ use winit_input_helper::WinitInputHelper;
 const WIDTH: u32 = 400;
 const HEIGHT: u32 = 300;
 
-pub fn run_loop() -> Result<(), Error> {
+pub fn run_loop(cpu: Cpu) -> Result<(), Error> {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
     let mut input = WinitInputHelper::new();
