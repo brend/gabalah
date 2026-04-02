@@ -125,7 +125,7 @@ pub fn sub8(value1: u8, value2: u8, flags: &mut u8) -> u8 {
             let result = value1.wrapping_sub(value2);
             flags.set_zero(result == 0);
             flags.set_subtraction(true);
-            flags.set_half_carry((value1 & 0x0F) + (value2 & 0x0F) > 0x0F);
+            flags.set_half_carry((value1 & 0x0F) < (value2 & 0x0F));
             flags.set_carry(value1 < value2);
             result
 }
@@ -144,7 +144,7 @@ pub fn sbc8(value1: u8, value2: u8, flags: &mut u8) -> u8 {
     flags.set_zero(result == 0);
     flags.set_subtraction(true);
     flags.set_half_carry((value1 & 0x0F) < (value2 & 0x0F) + carry);
-    flags.set_carry(value1 < value2 + carry);
+    flags.set_carry((value1 as u16) < (value2 as u16) + (carry as u16));
     result
 }
 
@@ -153,7 +153,7 @@ pub fn sbc16(value1: u16, value2: u16, flags: &mut u8) -> u16 {
     let result = value1.wrapping_sub(value2).wrapping_sub(carry);
     flags.set_subtraction(true);
     flags.set_half_carry((value1 & 0x0FFF) < (value2 & 0x0FFF) + carry);
-    flags.set_carry(value1 < value2 + carry);
+    flags.set_carry((value1 as u32) < (value2 as u32) + (carry as u32));
     result
 }
 

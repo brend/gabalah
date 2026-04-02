@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::memory::{Ram, Registers, Addr};
 use super::ops::Instruction;
+use super::alu::Flags;
 use super::{alu, map, Mnemonic, CARRY_FLAG_BITMASK, HALF_CARRY_FLAG_BITMASK, SUBTRACTION_FLAG_BITMASK};
 
 use Mnemonic::*;
@@ -155,7 +156,11 @@ impl Cpu {
                 r.a = !r.a;
                 r.f |= SUBTRACTION_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK;
             }
-            Scf => r.f |= CARRY_FLAG_BITMASK,
+            Scf => {
+                r.f |= CARRY_FLAG_BITMASK;
+                r.f &= !SUBTRACTION_FLAG_BITMASK;
+                r.f &= !HALF_CARRY_FLAG_BITMASK;
+            }
             Ccf => {
                 r.f ^= CARRY_FLAG_BITMASK;
                 r.f &= !SUBTRACTION_FLAG_BITMASK;
@@ -195,8 +200,8 @@ impl Cpu {
                     r.sp += 2;
                 }
             }
-            Stop(_op) => todo!(),
-            Halt => todo!(),          
+            Stop(_op) => (),
+            Halt => (),
             Reti => {
                 new_pc = Some(m.read_word(Addr(r.sp)));
                 r.sp += 2;
@@ -217,7 +222,7 @@ impl Cpu {
             }
             Call(dst) => {
                 debug_assert!(dst.target_size() == 2);
-                let ret = r.pc + 2;
+                let ret = r.pc + instruction.bytes as u16;
                 m.write_word(Addr(r.sp - 2), ret);
                 r.sp -= 2;
                 new_pc = Some(dst.read_word(r, m));
@@ -226,7 +231,7 @@ impl Cpu {
                 debug_assert!(dst.target_size() == 2);
                 let flag = condition.read_byte(r, m);
                 if flag == 1 {
-                    let ret = r.pc + 2;
+                    let ret = r.pc + instruction.bytes as u16;
                     m.write_word(Addr(r.sp - 2), ret);
                     r.sp -= 2;
                     new_pc = Some(dst.read_word(r, m));
@@ -242,7 +247,7 @@ impl Cpu {
                 r.sp += 2;
             }
             Rst(dst) => {
-                let ret = r.pc;
+                let ret = r.pc + instruction.bytes as u16;
                 m.write_byte(Addr(r.sp - 1), (ret >> 8) as u8);
                 m.write_byte(Addr(r.sp - 2), ret as u8);
                 r.sp -= 2;
@@ -250,10 +255,42 @@ impl Cpu {
             }
             Ldhl(op) => {
                 let offset = op.read_byte(r, m) as i8;
-                let sp = r.sp as i32;
-                let result = (sp + offset as i32) as u16;
+                let imm = offset as u8;
+                let result = r.sp.wrapping_add((offset as i16) as u16);
+                r.f = 0;
+                r.f.set_half_carry((r.sp & 0x000F) + ((imm as u16) & 0x000F) > 0x000F);
+                r.f.set_carry((r.sp & 0x00FF) + ((imm as u16) & 0x00FF) > 0x00FF);
                 r.set_hl(result);
-            },
+            }
+            AddSp(op) => {
+                let offset = op.read_byte(r, m) as i8;
+                let imm = offset as u8;
+                let result = r.sp.wrapping_add((offset as i16) as u16);
+                r.f = 0;
+                r.f.set_half_carry((r.sp & 0x000F) + ((imm as u16) & 0x000F) > 0x000F);
+                r.f.set_carry((r.sp & 0x00FF) + ((imm as u16) & 0x00FF) > 0x00FF);
+                r.sp = result;
+            }
+            LdHliA => {
+                let hl = r.hl();
+                m.write_byte(Addr(hl), r.a);
+                r.set_hl(hl.wrapping_add(1));
+            }
+            LdAHli => {
+                let hl = r.hl();
+                r.a = m.read_byte(Addr(hl));
+                r.set_hl(hl.wrapping_add(1));
+            }
+            LdHldA => {
+                let hl = r.hl();
+                m.write_byte(Addr(hl), r.a);
+                r.set_hl(hl.wrapping_sub(1));
+            }
+            LdAHld => {
+                let hl = r.hl();
+                r.a = m.read_byte(Addr(hl));
+                r.set_hl(hl.wrapping_sub(1));
+            }
             Invalid(msg) => panic!("Invalid instruction or not implemented: {}", msg),
         }
 

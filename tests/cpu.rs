@@ -13,4 +13,12 @@ mod tests {
         registers.f = 0x43;
         assert_eq!(registers.af(), 0x4243);
     }
+
+    #[test]
+    fn test_set_af_masks_low_flag_bits() {
+        let mut registers = setup();
+        registers.set_af(0x12FF);
+        assert_eq!(registers.a, 0x12);
+        assert_eq!(registers.f, 0xF0);
+    }
 }

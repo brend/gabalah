@@ -63,7 +63,7 @@ impl Registers {
     /// sets the value of the 16-bit AF register
     pub fn set_af(&mut self, value: u16) {
         self.a = hi(value);
-        self.f = lo(value);
+        self.f = lo(value) & 0xF0;
     }
 
     /// sets the value of the 16-bit BC register

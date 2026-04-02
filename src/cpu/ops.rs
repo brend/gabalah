@@ -85,6 +85,16 @@ pub enum Mnemonic {
     Di,
     /// LDHL
     Ldhl(Operand),
+    /// ADD SP, e8
+    AddSp(Operand),
+    /// LD (HL+), A
+    LdHliA,
+    /// LD A, (HL+)
+    LdAHli,
+    /// LD (HL-), A
+    LdHldA,
+    /// LD A, (HL-)
+    LdAHld,
     /// Invalid instruction
     Invalid(&'static str),
 }
@@ -153,6 +163,7 @@ impl Location {
             BC => registers.set_bc(value),
             DE => registers.set_de(value),
             HL => registers.set_hl(value),
+            SP => registers.sp = value,
             _ => panic!("Invalid location for write_word"),
         }
     }
@@ -182,6 +193,7 @@ impl Location {
             BC => r.bc(),
             DE => r.de(),
             HL => r.hl(),
+            SP => r.sp,
             Const16 => memory.read_word(Addr(r.pc + 1)),
             _ => panic!("Invalid location for read_word"),
         }
@@ -237,7 +249,7 @@ impl Operand {
                 memory.read_byte(Addr(addr))
             }
             Operand::HighMemory(loc) => {
-                let addr = loc.read_word(registers, memory);
+                let addr = loc.read_byte(registers, memory) as u16;
                 memory.read_byte(Addr(0xFF00 + addr))
             }
         }
@@ -258,7 +270,7 @@ impl Operand {
                 memory.write_byte(Addr(addr), value);
             }
             Operand::HighMemory(loc) => {
-                let addr = loc.read_word(registers, memory);
+                let addr = loc.read_byte(registers, memory) as u16;
                 memory.write_byte(Addr(0xFF00 + addr), value);
             }
         }

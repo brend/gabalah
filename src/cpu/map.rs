@@ -54,7 +54,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // decrease D
         (0x15, I::new(Dec(D.imm()), 1, 4)),
         // load n into D
-        (0x16, I::new(Ld(D.imm(), Const8.imm()), 2, 6)),
+        (0x16, I::new(Ld(D.imm(), Const8.imm()), 2, 8)),
         // rotate A left through Carry flag
         (0x17, I::new(Rla, 1, 4)),
         // jump relative by signed 8-bit offset
@@ -81,8 +81,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // load nn into HL
         (0x21, I::new(Ld(HL.imm(), Const16.imm()), 3, 12)),
         // load A into [HL]. Increment HL
-        // 0x22
-        // TODO: invent a way to implement this -- new type of operand maybe?
+        (0x22, I::new(LdHliA, 1, 8)),
 
         // increase HL
         (0x23, I::new(Inc(HL.imm()), 1, 8)),
@@ -102,8 +101,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // add HL to HL
         (0x29, I::new(Add(HL.imm(), HL.imm()), 1, 8)),
         // load [HL] into A. Increment HL
-        // 0x2A
-        // TODO: invent a way to implement this
+        (0x2A, I::new(LdAHli, 1, 8)),
         // decrease HL
         (0x2B, I::new(Dec(HL.imm()), 1, 8)),
         // increase L
@@ -122,8 +120,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // load nn into SP
         (0x31, I::new(Ld(SP.imm(), Const16.imm()), 3, 12)),
         // load A into [HL]. Decrement HL
-        // 0x32
-        // TODO: invent a way to implement this
+        (0x32, I::new(LdHldA, 1, 8)),
         // increase SP
         (0x33, I::new(Inc(SP.imm()), 1, 8)),
         // increase (HL)
@@ -142,8 +139,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // add SP to HL
         (0x39, I::new(Add(HL.imm(), SP.imm()), 1, 8)),
         // load [HL] into A. Decrement HL
-        // 0x3A
-        // TODO: invent a way to implement this
+        (0x3A, I::new(LdAHld, 1, 8)),
         // decrease SP
         (0x3B, I::new(Dec(SP.imm()), 1, 8)),
         // increase A
@@ -407,7 +403,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // compare L with A
         (0xBD, I::new(Cp(A.imm(), L.imm()), 1, 4)),
         // compare [HL] with A
-        (0xBE, I::new(Cp(A.imm(), L.imm()), 1, 8)),
+        (0xBE, I::new(Cp(A.imm(), HL.ind()), 1, 8)),
         // compare A with A
         (0xBF, I::new(Cp(A.imm(), A.imm()), 1, 4)),
         // return if nonzero
@@ -429,9 +425,9 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // push BC
         (0xC5, I::new(Push(BC.imm()), 1, 16)),
         // add n to A
-        (0xC6, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
+        (0xC6, I::new(Add(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x00
-        (0xC7, I::new(Rst(0x00), 1, 32)),
+        (0xC7, I::new(Rst(0x00), 1, 16)),
         // return if zero
         (0xC8, I::new_ex(Retc(FlagZ.imm()), 1, vec![20, 8])),
         // return
@@ -452,9 +448,9 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // call nn
         (0xCD, I::new(Call(Const16.imm()), 3, 24)),
         // add n to A with carry
-        (0xCE, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
+        (0xCE, I::new(Adc(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x08
-        (0xCF, I::new(Rst(0x08), 1, 32)),
+        (0xCF, I::new(Rst(0x08), 1, 16)),
         // return if no carry
         (0xD0, I::new_ex(Retc(FlagNc.imm()), 1, vec![20, 8])),
         // pop DE
@@ -474,9 +470,9 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // push DE
         (0xD5, I::new(Push(DE.imm()), 1, 16)),
         // subtract n from A
-        (0xD6, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
+        (0xD6, I::new(Sub(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x10
-        (0xD7, I::new(Rst(0x10), 1, 32)),
+        (0xD7, I::new(Rst(0x10), 1, 16)),
         // return if carry
         (0xD8, I::new_ex(Retc(FlagC.imm()), 1, vec![20, 8])),
         // return and enable interrupts
@@ -496,9 +492,9 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // extended operations
         (0xDD, I::new(Invalid("0xDD"), 1, 4)),
         // subtract n from A with carry
-        (0xDE, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
+        (0xDE, I::new(Sbc(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x18
-        (0xDF, I::new(Rst(0x18), 1, 32)),
+        (0xDF, I::new(Rst(0x18), 1, 16)),
         // load A into [0xFF + n]
         (0xE0, I::new(Ld(Const8.high(), A.imm()), 2, 12)),
         // pop HL
@@ -512,11 +508,11 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // push HL
         (0xE5, I::new(Push(HL.imm()), 1, 16)),
         // and n with A
-        (0xE6, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
+        (0xE6, I::new(And(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x20
-        (0xE7, I::new(Rst(0x20), 1, 32)),
+        (0xE7, I::new(Rst(0x20), 1, 16)),
         // add n to SP
-        (0xE8, I::new(Add(SP.imm(), Const8.imm()), 2, 16)),
+        (0xE8, I::new(AddSp(Const8.imm()), 2, 16)),
         // jump to HL
         (0xE9, I::new(Jp(HL.imm()), 1, 4)),
         // load A into [nn]
@@ -528,9 +524,9 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // extended operations
         (0xED, I::new(Invalid("0xED"), 1, 4)),
         // xor n with A
-        (0xEE, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
+        (0xEE, I::new(Xor(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x28
-        (0xEF, I::new(Rst(0x28), 1, 32)),
+        (0xEF, I::new(Rst(0x28), 1, 16)),
         // load [0xFF + n] into A
         (0xF0, I::new(Ld(A.imm(), Const8.high()), 2, 12)),
         // pop AF
@@ -544,9 +540,9 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // push AF
         (0xF5, I::new(Push(AF.imm()), 1, 16)),
         // or n with A
-        (0xF6, I::new(Ld(A.imm(), Const8.imm()), 2, 8)),
+        (0xF6, I::new(Or(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x30
-        (0xF7, I::new(Rst(0x30), 1, 32)),
+        (0xF7, I::new(Rst(0x30), 1, 16)),
         // load SP + n into HL
         (0xF8, I::new(Ldhl(Const8.imm()), 2, 12)),
         // load HL into SP
@@ -562,7 +558,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // compare n with A
         (0xFE, I::new(Cp(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x38
-        (0xFF, I::new(Rst(0x38), 1, 32)),
+        (0xFF, I::new(Rst(0x38), 1, 16)),
     ]);
     
     map
