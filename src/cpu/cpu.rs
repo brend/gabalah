@@ -10,6 +10,7 @@ use Mnemonic::*;
 pub struct Cpu {
     pub memory: Ram,
     pub registers: Registers,
+    pub total_cycles: u64,
     opcode_map: HashMap<u8, Instruction>,
     ime_activation_countdown: i32,
 }
@@ -20,6 +21,7 @@ impl Cpu {
         Cpu {
             memory: Ram::new(),
             registers: Registers::new(),
+            total_cycles: 0,
             opcode_map: map::build_opcode_map(),
             ime_activation_countdown: 0,
         }
@@ -33,13 +35,20 @@ impl Cpu {
     /// Executes the next instruction
     pub fn step(&mut self) {
         let opcode = self.memory.read_byte(Addr(self.registers.pc));
+        if opcode == 0xCB {
+            let cb_opcode = self.memory.read_byte(Addr(self.registers.pc.wrapping_add(1)));
+            let cycles = self.execute_cb(cb_opcode);
+            self.total_cycles += cycles as u64;
+            return;
+        }
         let instruction = self.opcode_map.get(&opcode).unwrap().clone();
         self.execute(&instruction);
     }
 
     /// Executes an instruction, modifying the state of the CPU
-    pub fn execute(&mut self, instruction: &Instruction) {
+    pub fn execute(&mut self, instruction: &Instruction) -> usize {
         let mut new_pc = None;
+        let mut conditional_taken = None;
         let r = &mut self.registers;
         let m = &mut self.memory;
 
@@ -145,8 +154,10 @@ impl Cpu {
                 new_pc = Some((r.pc as i32 + 2 + offset as i32) as u16);
             }
             Jrc(cc, offset) => {
+                conditional_taken = Some(false);
                 let flag = cc.read_byte(r, m);
                 if flag == 1 {
+                    conditional_taken = Some(true);
                     let offset = offset.read_byte(r, m) as i8;
                     new_pc = Some((r.pc as i32 + 2 + offset as i32) as u16);
                 }
@@ -194,8 +205,10 @@ impl Cpu {
                 r.sp += 2;
             }
             Retc(cc) => {
+                conditional_taken = Some(false);
                 let flag = cc.read_byte(r, m);
                 if flag == 1 {
+                    conditional_taken = Some(true);
                     new_pc = Some(m.read_word(Addr(r.sp)));
                     r.sp += 2;
                 }
@@ -215,8 +228,10 @@ impl Cpu {
             }
             Jpc(cc, dst) => {
                 debug_assert!(dst.target_size() == 2);
+                conditional_taken = Some(false);
                 let flag = cc.read_byte(r, m);
                 if flag == 1 {
+                    conditional_taken = Some(true);
                     new_pc = Some(dst.read_word(r, m));
                 }
             }
@@ -229,8 +244,10 @@ impl Cpu {
             }
             Callc(condition, dst) => {
                 debug_assert!(dst.target_size() == 2);
+                conditional_taken = Some(false);
                 let flag = condition.read_byte(r, m);
                 if flag == 1 {
+                    conditional_taken = Some(true);
                     let ret = r.pc + instruction.bytes as u16;
                     m.write_word(Addr(r.sp - 2), ret);
                     r.sp -= 2;
@@ -299,5 +316,154 @@ impl Cpu {
         } else {
             r.pc += instruction.bytes as u16;
         }
+
+        let cycles = match instruction._cycles.as_slice() {
+            [single] => *single,
+            [taken, not_taken] => {
+                if conditional_taken == Some(true) {
+                    *taken
+                } else {
+                    *not_taken
+                }
+            }
+            _ => instruction._cycles[0],
+        };
+        self.total_cycles += cycles as u64;
+        cycles
+    }
+
+    fn read_cb_target(&self, idx: u8) -> u8 {
+        let r = &self.registers;
+        match idx {
+            0 => r.b,
+            1 => r.c,
+            2 => r.d,
+            3 => r.e,
+            4 => r.h,
+            5 => r.l,
+            6 => self.memory.read_byte(Addr(r.hl())),
+            7 => r.a,
+            _ => unreachable!(),
+        }
+    }
+
+    fn write_cb_target(&mut self, idx: u8, value: u8) {
+        let r = &mut self.registers;
+        match idx {
+            0 => r.b = value,
+            1 => r.c = value,
+            2 => r.d = value,
+            3 => r.e = value,
+            4 => r.h = value,
+            5 => r.l = value,
+            6 => self.memory.write_byte(Addr(r.hl()), value),
+            7 => r.a = value,
+            _ => unreachable!(),
+        }
+    }
+
+    fn execute_cb(&mut self, opcode: u8) -> usize {
+        let x = opcode >> 6;
+        let y = (opcode >> 3) & 0x07;
+        let z = opcode & 0x07;
+
+        match x {
+            0 => {
+                let value = self.read_cb_target(z);
+                let mut out = value;
+                match y {
+                    0 => {
+                        // RLC r
+                        let carry = (value & 0x80) != 0;
+                        out = value.rotate_left(1);
+                        self.registers.f = 0;
+                        self.registers.f.set_zero(out == 0);
+                        self.registers.f.set_carry(carry);
+                    }
+                    1 => {
+                        // RRC r
+                        let carry = (value & 0x01) != 0;
+                        out = value.rotate_right(1);
+                        self.registers.f = 0;
+                        self.registers.f.set_zero(out == 0);
+                        self.registers.f.set_carry(carry);
+                    }
+                    2 => {
+                        // RL r
+                        let carry_in = self.registers.f.carry() as u8;
+                        let carry_out = (value & 0x80) != 0;
+                        out = (value << 1) | carry_in;
+                        self.registers.f = 0;
+                        self.registers.f.set_zero(out == 0);
+                        self.registers.f.set_carry(carry_out);
+                    }
+                    3 => {
+                        // RR r
+                        let carry_in = (self.registers.f.carry() as u8) << 7;
+                        let carry_out = (value & 0x01) != 0;
+                        out = (value >> 1) | carry_in;
+                        self.registers.f = 0;
+                        self.registers.f.set_zero(out == 0);
+                        self.registers.f.set_carry(carry_out);
+                    }
+                    4 => {
+                        // SLA r
+                        let carry = (value & 0x80) != 0;
+                        out = value << 1;
+                        self.registers.f = 0;
+                        self.registers.f.set_zero(out == 0);
+                        self.registers.f.set_carry(carry);
+                    }
+                    5 => {
+                        // SRA r
+                        let carry = (value & 0x01) != 0;
+                        out = (value >> 1) | (value & 0x80);
+                        self.registers.f = 0;
+                        self.registers.f.set_zero(out == 0);
+                        self.registers.f.set_carry(carry);
+                    }
+                    6 => {
+                        // SWAP r
+                        out = value.rotate_left(4);
+                        self.registers.f = 0;
+                        self.registers.f.set_zero(out == 0);
+                    }
+                    7 => {
+                        // SRL r
+                        let carry = (value & 0x01) != 0;
+                        out = value >> 1;
+                        self.registers.f = 0;
+                        self.registers.f.set_zero(out == 0);
+                        self.registers.f.set_carry(carry);
+                    }
+                    _ => unreachable!(),
+                }
+                self.write_cb_target(z, out);
+            }
+            1 => {
+                // BIT b,r
+                let value = self.read_cb_target(z);
+                let is_set = (value & (1u8 << y)) != 0;
+                let carry = self.registers.f.carry();
+                self.registers.f = 0;
+                self.registers.f.set_zero(!is_set);
+                self.registers.f.set_half_carry(true);
+                self.registers.f.set_carry(carry);
+            }
+            2 => {
+                // RES b,r
+                let value = self.read_cb_target(z);
+                self.write_cb_target(z, value & !(1u8 << y));
+            }
+            3 => {
+                // SET b,r
+                let value = self.read_cb_target(z);
+                self.write_cb_target(z, value | (1u8 << y));
+            }
+            _ => unreachable!(),
+        }
+
+        self.registers.pc = self.registers.pc.wrapping_add(2);
+        if z == 6 { 16 } else { 8 }
     }
 }

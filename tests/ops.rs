@@ -238,4 +238,96 @@ mod tests {
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.f, CARRY_FLAG_BITMASK);
     }
+
+    #[test]
+    fn test_cb_rlc_b() {
+        let mut cpu = setup();
+        cpu.registers.b = 0b1000_0001;
+        cpu.memory.write_byte(Addr(0x100), 0xCB);
+        cpu.memory.write_byte(Addr(0x101), 0x00);
+        cpu.step();
+
+        assert_eq!(cpu.registers.b, 0b0000_0011);
+        assert_eq!(cpu.registers.f & CARRY_FLAG_BITMASK, CARRY_FLAG_BITMASK);
+        assert_eq!(cpu.registers.pc, 0x102);
+    }
+
+    #[test]
+    fn test_cb_bit_sets_zero_and_preserves_carry() {
+        let mut cpu = setup();
+        cpu.registers.h = 0;
+        cpu.registers.f = CARRY_FLAG_BITMASK;
+        cpu.memory.write_byte(Addr(0x100), 0xCB);
+        cpu.memory.write_byte(Addr(0x101), 0x7C); // BIT 7,H
+        cpu.step();
+
+        assert_eq!(cpu.registers.f, ZERO_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK | CARRY_FLAG_BITMASK);
+    }
+
+    #[test]
+    fn test_cb_res_on_hl_target() {
+        let mut cpu = setup();
+        cpu.registers.set_hl(0xC000);
+        cpu.memory.write_byte(Addr(0xC000), 0xFF);
+        cpu.memory.write_byte(Addr(0x100), 0xCB);
+        cpu.memory.write_byte(Addr(0x101), 0x86); // RES 0,(HL)
+        cpu.step();
+
+        assert_eq!(cpu.memory.read_byte(Addr(0xC000)), 0xFE);
+    }
+
+    #[test]
+    fn test_cb_set_on_a() {
+        let mut cpu = setup();
+        cpu.registers.a = 0;
+        cpu.memory.write_byte(Addr(0x100), 0xCB);
+        cpu.memory.write_byte(Addr(0x101), 0xDF); // SET 3,A
+        cpu.step();
+
+        assert_eq!(cpu.registers.a, 0x08);
+    }
+
+    #[test]
+    fn test_cb_swap_hl() {
+        let mut cpu = setup();
+        cpu.registers.set_hl(0xC123);
+        cpu.memory.write_byte(Addr(0xC123), 0xF0);
+        cpu.memory.write_byte(Addr(0x100), 0xCB);
+        cpu.memory.write_byte(Addr(0x101), 0x36); // SWAP (HL)
+        cpu.step();
+
+        assert_eq!(cpu.memory.read_byte(Addr(0xC123)), 0x0F);
+        assert_eq!(cpu.registers.f, 0);
+    }
+
+    #[test]
+    fn test_cb_cycles_register_vs_hl_target() {
+        let mut cpu = setup();
+        cpu.memory.write_byte(Addr(0x100), 0xCB);
+        cpu.memory.write_byte(Addr(0x101), 0x00); // RLC B
+        cpu.step();
+        assert_eq!(cpu.total_cycles, 8);
+
+        cpu.registers.set_hl(0xC000);
+        cpu.memory.write_byte(Addr(0x102), 0xCB);
+        cpu.memory.write_byte(Addr(0x103), 0x06); // RLC (HL)
+        cpu.step();
+        assert_eq!(cpu.total_cycles, 24);
+    }
+
+    #[test]
+    fn test_conditional_jr_cycle_selection() {
+        let mut cpu = setup();
+        cpu.memory.write_byte(Addr(0x100), 0x20); // JR NZ,e8
+        cpu.memory.write_byte(Addr(0x101), 0x02);
+        cpu.registers.f = ZERO_FLAG_BITMASK; // NZ false
+        cpu.step();
+        assert_eq!(cpu.total_cycles, 8);
+
+        cpu.memory.write_byte(Addr(0x102), 0x20); // JR NZ,e8
+        cpu.memory.write_byte(Addr(0x103), 0x02);
+        cpu.registers.f = 0; // NZ true
+        cpu.step();
+        assert_eq!(cpu.total_cycles, 20);
+    }
 }
