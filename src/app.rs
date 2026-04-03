@@ -4,7 +4,7 @@
 use error_iter::ErrorIter as _;
 use crate::cpu::Cpu;
 use log::{debug, error};
-use pixels::{Error, Pixels, SurfaceTexture};
+use pixels::{Error, PixelsBuilder, SurfaceTexture, wgpu::Backends};
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -36,7 +36,22 @@ pub fn run_loop(cpu: Cpu) -> Result<(), Error> {
     let mut pixels = {
         let window_size = window.inner_size();
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
-        Pixels::new(WIDTH, HEIGHT, surface_texture)?
+        let mut builder = PixelsBuilder::new(WIDTH, HEIGHT, surface_texture);
+        #[cfg(target_os = "windows")]
+        {
+            // Avoid the DX12 backend on Windows because some drivers trip over
+            // swapchain render-target state transitions during presentation.
+            builder = builder.wgpu_backend(Backends::VULKAN | Backends::GL);
+        }
+
+        let pixels = builder.build()?;
+        let adapter_info = pixels.adapter().get_info();
+        debug!(
+            "Initialized pixels with backend={} adapter={}",
+            adapter_info.backend.to_str(),
+            adapter_info.name
+        );
+        pixels
     };
 
     let mut pixpixs = vec![];
