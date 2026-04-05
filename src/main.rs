@@ -14,13 +14,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // create a new CPU and load the rom
     let mut cpu = Cpu::new();
     cpu.load_rom(rom);
-    // let mut i = 0;
-
-    // loop {
-    //     i += 1;
-    //     println!("Step: {}", i);
-    //     cpu.step();
-    // }
     Ok(app::run_loop(cpu)?)
 }
 

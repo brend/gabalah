@@ -35,8 +35,17 @@ impl Registers {
     /// returns an instance of Registers with every register set to 0
     pub fn new() -> Registers {
         Registers {
-            pc: 0x100,
-            ..Default::default()
+            a: 0x01,
+            f: 0xB0,
+            b: 0x00,
+            c: 0x13,
+            d: 0x00,
+            e: 0xD8,
+            h: 0x01,
+            l: 0x4D,
+            sp: 0xFFFE,
+            pc: 0x0100,
+            ime: false,
         }
     }
 
@@ -117,7 +126,7 @@ impl Ram {
     /// Loads a ROM into memory
     pub fn load_rom(&mut self, rom: Vec<u8>) {
         assert!(rom.len() <= ROM_SIZE, "maximum ROM size exceeded");
-        let base_addr = 0x100;
+        let base_addr = 0x0000;
         for (i, byte) in rom.iter().enumerate() {
             self.cells[base_addr + i] = *byte;
         }

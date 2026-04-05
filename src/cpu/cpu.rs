@@ -32,17 +32,17 @@ impl Cpu {
         self.memory.load_rom(rom);
     }
 
-    /// Executes the next instruction
-    pub fn step(&mut self) {
+    /// Executes the next instruction, returning the number of cycles consumed
+    pub fn step(&mut self) -> usize {
         let opcode = self.memory.read_byte(Addr(self.registers.pc));
         if opcode == 0xCB {
             let cb_opcode = self.memory.read_byte(Addr(self.registers.pc.wrapping_add(1)));
             let cycles = self.execute_cb(cb_opcode);
             self.total_cycles += cycles as u64;
-            return;
+            return cycles;
         }
         let instruction = self.opcode_map.get(&opcode).unwrap().clone();
-        self.execute(&instruction);
+        self.execute(&instruction)
     }
 
     /// Executes an instruction, modifying the state of the CPU

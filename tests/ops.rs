@@ -5,7 +5,9 @@ mod tests {
     use gabalah::memory::Addr;
 
     fn setup() -> Cpu {
-        Cpu::new()
+        let mut cpu = Cpu::new();
+        cpu.registers.f = 0;
+        cpu
     }
 
     #[test]
