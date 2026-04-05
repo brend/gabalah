@@ -17,6 +17,7 @@ const GB_COLORS: [[u8; 4]; 4] = [
 /// Reads SCX/SCY scroll registers and respects LCDC tile map / data area bits.
 pub fn render_frame(ram: &[u8], screen: &mut [u8]) {
     let lcdc = ram[0xFF40];
+    let bgp = ram[0xFF47];
     let scy = ram[0xFF42] as usize;
     let scx = ram[0xFF43] as usize;
 
@@ -45,10 +46,11 @@ pub fn render_frame(ram: &[u8], screen: &mut [u8]) {
             let lo = ram[tile_address + pixel_y * 2];
             let hi = ram[tile_address + pixel_y * 2 + 1];
             let bit = 7 - pixel_x;
-            let palette_index = (((hi >> bit) & 1) << 1 | ((lo >> bit) & 1)) as usize;
+            let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+            let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
 
             let offset = (screen_y * WIDTH as usize + screen_x) * 4;
-            screen[offset..offset + 4].copy_from_slice(&GB_COLORS[palette_index]);
+            screen[offset..offset + 4].copy_from_slice(&GB_COLORS[shade]);
         }
     }
 }
@@ -101,6 +103,7 @@ mod tests {
         // Pixel bit 5: lo=1, hi=0 → palette 1
         // Pixel bit 4: lo=0, hi=0 → palette 0
         let mut ram = blank_ram();
+        ram[0xFF47] = 0xE4; // BGP: identity mapping (3→3, 2→2, 1→1, 0→0)
         write_tile(&mut ram, 0x9000, [
             (0b10101010, 0b11001100),
             (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0),
@@ -118,6 +121,7 @@ mod tests {
         // Put a solid palette-3 tile at BG map col 1 (tile index 1 in map).
         // Set SCX=8 so BG col 1 appears at screen x=0.
         let mut ram = blank_ram();
+        ram[0xFF47] = 0xE4; // BGP: identity mapping
         ram[0xFF43] = 8; // SCX
         ram[0x9801] = 1; // tile map col 1 → tile index 1
         // Tile 1 at 0x9000 + 1*16 = 0x9010: all pixels palette 3
@@ -137,6 +141,7 @@ mod tests {
         // Solid palette-3 tile at BG map row 1 (tile index 1 in map).
         // Set SCY=8 so BG row 1 appears at screen y=0.
         let mut ram = blank_ram();
+        ram[0xFF47] = 0xE4; // BGP: identity mapping
         ram[0xFF42] = 8; // SCY
         ram[0x9820] = 1; // tile map row 1 col 0 → tile index 1
         write_tile(&mut ram, 0x9010, [
@@ -155,6 +160,7 @@ mod tests {
         // LCDC bit 4 = 1 → tile data at 0x8000 + index*16 (unsigned).
         // Tile index 1 → 0x8010.
         let mut ram = blank_ram();
+        ram[0xFF47] = 0xE4; // BGP: identity mapping
         ram[0xFF40] = 0x10; // LCDC bit 4
         ram[0x9800] = 1;    // tile map slot 0 → tile index 1
         write_tile(&mut ram, 0x8010, [

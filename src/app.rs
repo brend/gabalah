@@ -4,6 +4,7 @@
 use error_iter::ErrorIter as _;
 use std::time::{Duration, Instant};
 use crate::cpu::Cpu;
+use crate::memory::Addr;
 use super::renderer;
 use log::{debug, error};
 use pixels::{Error, PixelsBuilder, SurfaceTexture};
@@ -128,6 +129,8 @@ impl Emulator {
         while cycles_this_frame < CYCLES_PER_FRAME {
             let cycles = self.cpu.step();
             cycles_this_frame += cycles;
+            let ly = (cycles_this_frame / 456).min(153) as u8;
+            self.cpu.memory.write_byte(Addr(0xFF44), ly);
         }
     }
 
