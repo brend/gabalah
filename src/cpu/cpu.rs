@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
-use crate::memory::{Ram, Registers, Addr};
-use super::ops::Instruction;
 use super::alu::Flags;
-use super::{alu, map, Mnemonic, CARRY_FLAG_BITMASK, HALF_CARRY_FLAG_BITMASK, SUBTRACTION_FLAG_BITMASK};
+use super::ops::Instruction;
+use super::{
+    alu, map, Mnemonic, CARRY_FLAG_BITMASK, HALF_CARRY_FLAG_BITMASK, SUBTRACTION_FLAG_BITMASK,
+};
+use crate::memory::{Addr, Ram, Registers};
 
 use Mnemonic::*;
 
@@ -36,7 +38,9 @@ impl Cpu {
     pub fn step(&mut self) -> usize {
         let opcode = self.memory.read_byte(Addr(self.registers.pc));
         if opcode == 0xCB {
-            let cb_opcode = self.memory.read_byte(Addr(self.registers.pc.wrapping_add(1)));
+            let cb_opcode = self
+                .memory
+                .read_byte(Addr(self.registers.pc.wrapping_add(1)));
             let cycles = self.execute_cb(cb_opcode);
             self.total_cycles += cycles as u64;
             return cycles;
@@ -45,10 +49,24 @@ impl Cpu {
         self.execute(&instruction)
     }
 
+    pub fn get_ie(&self) -> u8 {
+        self.memory.read_byte(Addr(0xFFFF))
+    }
+
+    pub fn get_if(&self) -> u8 {
+        self.memory.read_byte(Addr(0xFF0F))
+    }
+
+    pub fn set_if(&mut self, value: u8) {
+        self.memory.write_byte(Addr(0xFF0F), value);
+    }
+
     /// Executes an instruction, modifying the state of the CPU
     pub fn execute(&mut self, instruction: &Instruction) -> usize {
         let mut new_pc = None;
         let mut conditional_taken = None;
+        let if_contents = self.get_if();
+        let ie_contents = self.get_ie();
         let r = &mut self.registers;
         let m = &mut self.memory;
 
@@ -57,7 +75,7 @@ impl Cpu {
             if self.ime_activation_countdown == 0 {
                 r.ime = true;
             }
-        }   
+        }
 
         match instruction.mnemonic {
             Nop => (),
@@ -214,13 +232,22 @@ impl Cpu {
                 }
             }
             Stop(_op) => (),
-            Halt => (),
+            Halt => {
+                if r.ime {
+                    // burn cycles while no interrupt event
+                    if (ie_contents & if_contents) == 0 {
+                        new_pc = Some(r.pc)
+                    }
+                } else {
+                    // TODO: implement HALT bug behavior
+                }
+            }
             Reti => {
                 new_pc = Some(m.read_word(Addr(r.sp)));
                 r.sp += 2;
                 r.ime = true;
             }
-            Ei => self.ime_activation_countdown = 2,
+            Ei => self.ime_activation_countdown = 1,
             Di => r.ime = false,
             Jp(dst) => {
                 debug_assert!(dst.target_size() == 2);
@@ -464,6 +491,10 @@ impl Cpu {
         }
 
         self.registers.pc = self.registers.pc.wrapping_add(2);
-        if z == 6 { 16 } else { 8 }
+        if z == 6 {
+            16
+        } else {
+            8
+        }
     }
 }

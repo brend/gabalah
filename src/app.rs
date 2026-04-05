@@ -1,15 +1,15 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use error_iter::ErrorIter as _;
-use std::time::{Duration, Instant};
+use super::renderer;
 use crate::cpu::Cpu;
 use crate::memory::Addr;
-use super::renderer;
+use error_iter::ErrorIter as _;
 use log::{debug, error};
-use pixels::{Error, PixelsBuilder, SurfaceTexture};
 #[cfg(target_os = "windows")]
 use pixels::wgpu::Backends;
+use pixels::{Error, PixelsBuilder, SurfaceTexture};
+use std::time::{Duration, Instant};
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
@@ -129,9 +129,45 @@ impl Emulator {
         while cycles_this_frame < CYCLES_PER_FRAME {
             let cycles = self.cpu.step();
             cycles_this_frame += cycles;
+            let previous_ly = self.cpu.memory.read_byte(Addr(0xFF44));
             let ly = (cycles_this_frame / 456).min(153) as u8;
             self.cpu.memory.write_byte(Addr(0xFF44), ly);
+            if ly == 144 && previous_ly < ly {
+                self.cpu.set_if(self.cpu.get_if() | 0x01);
+            }
+
+            if self.is_interrupt_pending() {
+                self.interrupt()
+            }
         }
+    }
+
+    fn is_interrupt_pending(&self) -> bool {
+        self.cpu.registers.ime && (self.cpu.get_ie() & self.cpu.get_if()) != 0
+    }
+
+    fn interrupt(&mut self) {
+        self.cpu.registers.ime = false;
+        let if_contents = self.cpu.get_if();
+        let ie_contents = self.cpu.get_ie();
+        let pending = if_contents & ie_contents;
+        for bit in 0..5u8 {
+            if pending & (1 << bit) != 0 {
+                self.cpu.set_if(if_contents & !(1 << bit));
+                let vector = 0x0040u16 + (bit as u16) * 8;
+                self.call(vector);
+                return;
+            }
+        }
+    }
+
+    fn call(&mut self, vector: u16) {
+        // Emulation remark: this should cost 20 cycles
+        self.cpu
+            .memory
+            .write_word(Addr(self.cpu.registers.sp - 2), self.cpu.registers.pc);
+        self.cpu.registers.sp -= 2;
+        self.cpu.registers.pc = vector;
     }
 
     /// Renders the current emulator state into the pixel buffer.
