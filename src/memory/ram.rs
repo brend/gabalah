@@ -115,12 +115,23 @@ pub struct Addr(pub u16);
 #[derive(Debug)]
 pub struct Ram {
     cells: [u8; RAM_SIZE],
+    /// Bits 4-5 of the last write to 0xFF00: selects which button group to read
+    joypad_select: u8,
+    /// Active-high bitmask of pressed action buttons (bit 0=A, 1=B, 2=Select, 3=Start)
+    pub action_buttons: u8,
+    /// Active-high bitmask of pressed direction buttons (bit 0=Right, 1=Left, 2=Up, 3=Down)
+    pub direction_buttons: u8,
 }
 
 impl Ram {
     /// Returns an instance of zeroed Ram
     pub fn new() -> Ram {
-        Ram { cells: [0; RAM_SIZE] }
+        Ram {
+            cells: [0; RAM_SIZE],
+            joypad_select: 0x30, // neither group selected initially
+            action_buttons: 0,
+            direction_buttons: 0,
+        }
     }
 
     /// Loads a ROM into memory
@@ -134,6 +145,10 @@ impl Ram {
 
     /// Sets the byte at the specified address to the specified value
     pub fn write_byte(&mut self, address: Addr, value: u8) {
+        if address.0 == 0xFF00 {
+            self.joypad_select = value & 0x30;
+            return;
+        }
         self.cells[address.0 as usize] = value;
     }
 
@@ -146,6 +161,16 @@ impl Ram {
 
     /// Retrieves the byte at the specified address
     pub fn read_byte(&self, address: Addr) -> u8 {
+        if address.0 == 0xFF00 {
+            let mut lo = 0x0Fu8; // all buttons not pressed (active low)
+            if self.joypad_select & 0x20 == 0 {
+                lo &= !self.action_buttons;
+            }
+            if self.joypad_select & 0x10 == 0 {
+                lo &= !self.direction_buttons;
+            }
+            return 0xC0 | (self.joypad_select & 0x30) | (lo & 0x0F);
+        }
         self.cells[address.0 as usize]
     }
 

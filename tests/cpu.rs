@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use gabalah::memory::Registers;
+    use gabalah::memory::{Registers, Ram, Addr};
 
     fn setup() -> Registers {
         Registers::default()
@@ -20,5 +20,111 @@ mod tests {
         registers.set_af(0x12FF);
         assert_eq!(registers.a, 0x12);
         assert_eq!(registers.f, 0xF0);
+    }
+
+    // --- Joypad ---
+
+    fn joypad_ram() -> Ram {
+        Ram::new()
+    }
+
+    // Selects a button group by writing to 0xFF00.
+    // Bit 5 clear = action group; bit 4 clear = direction group.
+    fn select_group(ram: &mut Ram, action: bool, direction: bool) {
+        let mut val = 0x30u8; // both groups deselected
+        if action    { val &= !0x20; }
+        if direction { val &= !0x10; }
+        ram.write_byte(Addr(0xFF00), val);
+    }
+
+    #[test]
+    fn joypad_no_buttons_pressed_returns_all_high() {
+        let mut ram = joypad_ram();
+        select_group(&mut ram, true, false);
+        let result = ram.read_byte(Addr(0xFF00));
+        assert_eq!(result & 0x0F, 0x0F, "all action bits should be high when nothing pressed");
+    }
+
+    #[test]
+    fn joypad_action_a_pressed_bit0_low() {
+        let mut ram = joypad_ram();
+        ram.action_buttons = 0x01; // A pressed
+        select_group(&mut ram, true, false);
+        let result = ram.read_byte(Addr(0xFF00));
+        assert_eq!(result & 0x01, 0, "A (bit 0) should be low when pressed");
+        assert_eq!(result & 0x0E, 0x0E, "other action bits should remain high");
+    }
+
+    #[test]
+    fn joypad_action_start_pressed_bit3_low() {
+        let mut ram = joypad_ram();
+        ram.action_buttons = 0x08; // Start pressed
+        select_group(&mut ram, true, false);
+        let result = ram.read_byte(Addr(0xFF00));
+        assert_eq!(result & 0x08, 0, "Start (bit 3) should be low when pressed");
+        assert_eq!(result & 0x07, 0x07, "other action bits should remain high");
+    }
+
+    #[test]
+    fn joypad_direction_right_pressed_bit0_low() {
+        let mut ram = joypad_ram();
+        ram.direction_buttons = 0x01; // Right pressed
+        select_group(&mut ram, false, true);
+        let result = ram.read_byte(Addr(0xFF00));
+        assert_eq!(result & 0x01, 0, "Right (bit 0) should be low when pressed");
+        assert_eq!(result & 0x0E, 0x0E, "other direction bits should remain high");
+    }
+
+    #[test]
+    fn joypad_direction_not_visible_when_action_group_selected() {
+        let mut ram = joypad_ram();
+        ram.direction_buttons = 0x0F; // all directions pressed
+        select_group(&mut ram, true, false); // only action group selected
+        let result = ram.read_byte(Addr(0xFF00));
+        assert_eq!(result & 0x0F, 0x0F, "direction buttons must not bleed into action group read");
+    }
+
+    #[test]
+    fn joypad_action_not_visible_when_direction_group_selected() {
+        let mut ram = joypad_ram();
+        ram.action_buttons = 0x0F; // all actions pressed
+        select_group(&mut ram, false, true); // only direction group selected
+        let result = ram.read_byte(Addr(0xFF00));
+        assert_eq!(result & 0x0F, 0x0F, "action buttons must not bleed into direction group read");
+    }
+
+    #[test]
+    fn joypad_both_groups_selected_results_are_anded() {
+        let mut ram = joypad_ram();
+        ram.action_buttons = 0x01;    // A pressed (bit 0 of action)
+        ram.direction_buttons = 0x02; // Left pressed (bit 1 of direction)
+        select_group(&mut ram, true, true);
+        let result = ram.read_byte(Addr(0xFF00));
+        // bit 0: A pressed → low; bit 1: Left pressed → low; rest high
+        assert_eq!(result & 0x01, 0, "bit 0 low: A pressed in action group");
+        assert_eq!(result & 0x02, 0, "bit 1 low: Left pressed in direction group");
+        assert_eq!(result & 0x0C, 0x0C, "bits 2-3 high: nothing pressed there");
+    }
+
+    #[test]
+    fn joypad_write_only_stores_select_bits() {
+        let mut ram = joypad_ram();
+        ram.action_buttons = 0x05;
+        // Write with extra bits set — only bits 4-5 should be stored
+        ram.write_byte(Addr(0xFF00), 0xFF);
+        // With 0xFF written, bits 4 and 5 are set → neither group selected
+        let result = ram.read_byte(Addr(0xFF00));
+        assert_eq!(result & 0x0F, 0x0F, "no group selected: all bits high regardless of pressed buttons");
+        assert_eq!(result & 0x30, 0x30, "select bits reflected back");
+    }
+
+    #[test]
+    fn joypad_upper_bits_always_set() {
+        let mut ram = joypad_ram();
+        select_group(&mut ram, true, true);
+        ram.action_buttons = 0x0F;
+        ram.direction_buttons = 0x0F;
+        let result = ram.read_byte(Addr(0xFF00));
+        assert_eq!(result & 0xC0, 0xC0, "bits 6-7 must always read as 1");
     }
 }

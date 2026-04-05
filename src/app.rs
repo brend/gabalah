@@ -88,6 +88,41 @@ pub fn run_loop(cpu: Cpu) -> Result<(), Error> {
                 return;
             }
 
+            // Joypad: (key, is_action_group, bit)
+            // Direction bits: 0=Right, 1=Left, 2=Up, 3=Down
+            // Action bits:    0=A,     1=B,    2=Select, 3=Start
+            let buttons: [(KeyCode, bool, u8); 8] = [
+                (KeyCode::ArrowRight, false, 0x01),
+                (KeyCode::ArrowLeft,  false, 0x02),
+                (KeyCode::ArrowUp,    false, 0x04),
+                (KeyCode::ArrowDown,  false, 0x08),
+                (KeyCode::KeyZ,       true,  0x01),
+                (KeyCode::KeyX,       true,  0x02),
+                (KeyCode::ShiftRight, true,  0x04),
+                (KeyCode::Enter,      true,  0x08),
+            ];
+            let mut any_newly_pressed = false;
+            for (key, is_action, bit) in buttons {
+                if input.key_pressed(key) {
+                    if is_action {
+                        emulator.cpu.memory.action_buttons |= bit;
+                    } else {
+                        emulator.cpu.memory.direction_buttons |= bit;
+                    }
+                    any_newly_pressed = true;
+                }
+                if input.key_released(key) {
+                    if is_action {
+                        emulator.cpu.memory.action_buttons &= !bit;
+                    } else {
+                        emulator.cpu.memory.direction_buttons &= !bit;
+                    }
+                }
+            }
+            if any_newly_pressed {
+                emulator.cpu.set_if(emulator.cpu.get_if() | 0x10);
+            }
+
             // Resize the window
             if let Some(size) = input.window_resized() {
                 if let Err(err) = pixels.resize_surface(size.width, size.height) {
