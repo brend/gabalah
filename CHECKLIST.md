@@ -16,22 +16,22 @@ Check off items as they are done and update `STATUS.md` accordingly.
 - [x] Initialise hardware registers to post-boot DMG values (AF=0x01B0, BC=0x0013, DE=0x00D8, HL=0x014D, SP=0xFFFE, PC=0x0100)
 - [ ] Parse cartridge header (title, cartridge type, ROM/RAM size)
 - [ ] Implement ROM-only mapper (type `0x00`) — simplest case, no banking
-- [ ] Add frame-rate limiter (~59.7 fps)
+- [x] Add frame-rate limiter (~59.7 fps)
 
 ---
 
 ## Phase 2 — PPU (Pixel Processing Unit)
 
-- [ ] Implement LCDC register (`0xFF40`) read/write effects
+- [x] Background tile rendering (BG tile map + tile data, scrolling SCX/SCY)
+- [x] Palette register: BGP (`0xFF47`) decoded to 4-shade colour output
+- [x] Connect PPU framebuffer to `Emulator::draw()` in `app.rs`
+- [x] Scanline counter: increment LY (`0xFF44`) each scanline, wrap at 154
+- [ ] Implement LCDC register (`0xFF40`) read/write effects fully (bit 7 BG enable, etc.)
 - [ ] Implement STAT register (`0xFF41`) and mode transitions (OAM scan → drawing → HBlank → VBlank)
-- [ ] Scanline counter: increment LY (`0xFF44`) each scanline, wrap at 154
 - [ ] LYC=LY coincidence flag and STAT interrupt
-- [ ] Background tile rendering (BG tile map + tile data, scrolling SCX/SCY)
 - [ ] Window layer rendering (WX/WY)
 - [ ] Sprite (OAM) rendering (8×8 and 8×16 modes, priority, flip)
-- [ ] Palette registers: BGP (`0xFF47`), OBP0 (`0xFF48`), OBP1 (`0xFF49`)
-- [ ] Connect PPU framebuffer to `Emulator::draw()` in `app.rs`
-- [ ] Remove `renderer.rs` placeholder and integrate its tile logic into the PPU
+- [ ] Palette registers: OBP0 (`0xFF48`), OBP1 (`0xFF49`) (for sprites)
 
 ---
 
@@ -85,7 +85,7 @@ Check off items as they are done and update `STATUS.md` accordingly.
 ## Ongoing / Maintenance
 
 - [ ] Resolve TODO at `cpu.rs:69`: verify SP-relative 16-bit LD behaviour
-- [ ] Remove dead code in `renderer.rs` and `err.rs` once superseded
+- [ ] Remove dead code in `err.rs` once superseded
 - [ ] Pass Blargg's CPU instruction tests (`cpu_instrs.gb`)
 - [ ] Pass Blargg's instruction timing tests (`instr_timing.gb`)
 - [ ] Pass dmg-acid2 PPU conformance test

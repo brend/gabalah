@@ -18,7 +18,7 @@ src/
   memory/
     mod.rs         — re-exports Ram, Registers, Addr
     ram.rs         — Registers, Ram (flat 64KB), Addr, word/hi/lo helpers
-  renderer.rs      — early PPU stub (tile decoder); not yet wired to emulator
+  renderer.rs      — BG tile renderer; reads LCDC/BGP/SCX/SCY, decodes 2bpp tiles, outputs 160×144 RGBA
   err.rs           — placeholder error type (currently unused)
 ```
 
@@ -28,8 +28,8 @@ src/
 - **Memory**: `Ram` is a flat `[u8; 65536]`. ROM is loaded at `0x0100` (should be `0x0000` — known bug, tracked in `STATUS.md`).
 - **Registers**: `pc` initialises to `0x0100`. `ime` (interrupt master enable) is a bool field on `Registers`.
 - **Cycles**: `Cpu::total_cycles` accumulates over the session. The app loop runs ~70,224 cycles per frame (`CYCLES_PER_FRAME` in `app.rs`).
-- **Display**: `Emulator::draw()` in `app.rs` currently fills the screen with the Game Boy "off" colour (`#9BBC0F`). The window is 160×144 scaled 3×.
-- **renderer.rs**: Contains a working tile-decoder (`read_pixels`, `draw_tile`, `set_pixel`) but is not yet connected to the emulator. Will feed into the PPU.
+- **Display**: `Emulator::draw()` calls `renderer::render_frame()`, which renders the BG tile layer at 160×144 scaled 3×. Frame rate is capped at ~59.7 fps via `FRAME_DURATION`.
+- **renderer.rs**: Full BG renderer — reads tile map (LCDC bit 3), tile data (LCDC bit 4, signed/unsigned), SCX/SCY scroll, BGP palette. Window and sprite layers not yet implemented.
 
 ## Build & Test
 
