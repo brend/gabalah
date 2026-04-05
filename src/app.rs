@@ -2,7 +2,9 @@
 #![forbid(unsafe_code)]
 
 use error_iter::ErrorIter as _;
+use std::time::{Duration, Instant};
 use crate::cpu::Cpu;
+use super::renderer;
 use log::{debug, error};
 use pixels::{Error, PixelsBuilder, SurfaceTexture};
 #[cfg(target_os = "windows")]
@@ -22,6 +24,7 @@ const SCALE: f64 = 3.0;
 
 // ~70,224 cycles per frame at 4.194304 MHz / 59.7275 fps
 const CYCLES_PER_FRAME: usize = 70224;
+const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706); // 70224 / 4_194_304 s
 
 pub fn run_loop(cpu: Cpu) -> Result<(), Error> {
     env_logger::init();
@@ -62,6 +65,7 @@ pub fn run_loop(cpu: Cpu) -> Result<(), Error> {
     };
 
     let mut emulator = Emulator::new(cpu);
+    let mut last_frame = Instant::now();
 
     let res = event_loop.run(|event, elwt| {
         if let Event::WindowEvent {
@@ -92,8 +96,11 @@ pub fn run_loop(cpu: Cpu) -> Result<(), Error> {
                 }
             }
 
-            emulator.step_frame();
-            window.request_redraw();
+            if last_frame.elapsed() >= FRAME_DURATION {
+                last_frame += FRAME_DURATION;
+                emulator.step_frame();
+                window.request_redraw();
+            }
         }
     });
     res.map_err(|e| Error::UserDefined(Box::new(e)))
@@ -125,14 +132,7 @@ impl Emulator {
     }
 
     /// Renders the current emulator state into the pixel buffer.
-    /// Until the PPU is implemented, draws an all-off (white) screen.
     fn draw(&self, screen: &mut [u8]) {
-        for pixel in screen.chunks_exact_mut(4) {
-            // Game Boy "off" color: lightest green-white (#9BBC0F palette)
-            pixel[0] = 0x9B; // R
-            pixel[1] = 0xBC; // G
-            pixel[2] = 0x0F; // B
-            pixel[3] = 0xFF; // A
-        }
+        renderer::render_frame(self.cpu.memory.as_slice(), screen);
     }
 }

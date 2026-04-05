@@ -153,4 +153,8 @@ impl Ram {
         debug_assert!(address.0 < u16::MAX);
         word(self.cells[address.0 as usize + 1], self.cells[address.0 as usize])
     }
+
+    pub fn as_slice(&self) -> &[u8] {
+        &self.cells
+    }
 }
