@@ -16,6 +16,63 @@ const GB_COLORS: [[u8; 4]; 4] = [
 /// `ram` must be a 65536-byte slice (the full Game Boy address space).
 /// Reads SCX/SCY scroll registers and respects LCDC tile map / data area bits.
 pub fn render_frame(ram: &[u8], screen: &mut [u8]) {
+    render_bg(ram, screen);
+    render_obj(ram, screen);
+}
+
+fn render_obj(ram: &[u8], screen: &mut [u8]) {
+    let lcdc = ram[0xFF40];
+
+    // LCDC bit 5: OBJ (sprite) enable
+    if (lcdc & 0x20) == 0 {
+        return;
+    }
+
+    // TODO: Handle sprite attributes (color palette, priority)
+    // TODO: Handle 8x16 pixel sprites (LCDC bit 2 set)
+
+    let obj_tile_base: usize = 0x8000;
+    let mut obj_addr = 0xFE00;
+
+    while obj_addr <= 0xFE9F {
+        let tile_y = ram[obj_addr].wrapping_sub(16) as usize;
+        let tile_x = ram[obj_addr + 1].wrapping_sub(8) as usize;
+        let tile_index = ram[obj_addr + 2];
+        //let attributes = ram[objAddr + 3];
+        let tile_addr = obj_tile_base + (tile_index as usize * 16);
+        let tile_data: &[u8] = &ram[tile_addr..tile_addr + 16];
+
+        for row in 0..8 {
+            let screen_y = tile_y + row;
+            if screen_y >= HEIGHT as usize {
+                break;
+            }
+            for col in 0..8 {
+                let screen_x = tile_x + col;
+                if screen_x >= WIDTH as usize {
+                    break;
+                }
+                let lo = tile_data[row * 2];
+                let hi = tile_data[row * 2 + 1];
+                let bit = 7 - col;
+                let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+
+                if palette_index == 0 {
+                    continue;
+                }
+
+                let obp = ram[0xFF48]; // OBP0 (ignoring attribute bit 4 for now)
+                let color = (obp >> (palette_index * 2)) & 0x3;
+                let offset = (screen_y as usize * WIDTH as usize + screen_x as usize) * 4;
+                screen[offset..offset + 4].copy_from_slice(&GB_COLORS[color as usize]);
+            }
+        }
+
+        obj_addr += 4;
+    }
+}
+
+fn render_bg(ram: &[u8], screen: &mut [u8]) {
     let lcdc = ram[0xFF40];
     let bgp = ram[0xFF47];
     let scy = ram[0xFF42] as usize;
@@ -104,10 +161,20 @@ mod tests {
         // Pixel bit 4: lo=0, hi=0 → palette 0
         let mut ram = blank_ram();
         ram[0xFF47] = 0xE4; // BGP: identity mapping (3→3, 2→2, 1→1, 0→0)
-        write_tile(&mut ram, 0x9000, [
-            (0b10101010, 0b11001100),
-            (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0),
-        ]);
+        write_tile(
+            &mut ram,
+            0x9000,
+            [
+                (0b10101010, 0b11001100),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+            ],
+        );
         let mut screen = blank_screen();
         render_frame(&ram, &mut screen);
         assert_eq!(pixel(&screen, 0, 0), GB_COLORS[3]); // bit 7
@@ -124,11 +191,21 @@ mod tests {
         ram[0xFF47] = 0xE4; // BGP: identity mapping
         ram[0xFF43] = 8; // SCX
         ram[0x9801] = 1; // tile map col 1 → tile index 1
-        // Tile 1 at 0x9000 + 1*16 = 0x9010: all pixels palette 3
-        write_tile(&mut ram, 0x9010, [
-            (0xFF, 0xFF), (0xFF, 0xFF), (0xFF, 0xFF), (0xFF, 0xFF),
-            (0xFF, 0xFF), (0xFF, 0xFF), (0xFF, 0xFF), (0xFF, 0xFF),
-        ]);
+                         // Tile 1 at 0x9000 + 1*16 = 0x9010: all pixels palette 3
+        write_tile(
+            &mut ram,
+            0x9010,
+            [
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+            ],
+        );
         let mut screen = blank_screen();
         render_frame(&ram, &mut screen);
         for row in 0..8 {
@@ -144,10 +221,20 @@ mod tests {
         ram[0xFF47] = 0xE4; // BGP: identity mapping
         ram[0xFF42] = 8; // SCY
         ram[0x9820] = 1; // tile map row 1 col 0 → tile index 1
-        write_tile(&mut ram, 0x9010, [
-            (0xFF, 0xFF), (0xFF, 0xFF), (0xFF, 0xFF), (0xFF, 0xFF),
-            (0xFF, 0xFF), (0xFF, 0xFF), (0xFF, 0xFF), (0xFF, 0xFF),
-        ]);
+        write_tile(
+            &mut ram,
+            0x9010,
+            [
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+                (0xFF, 0xFF),
+            ],
+        );
         let mut screen = blank_screen();
         render_frame(&ram, &mut screen);
         for col in 0..8 {
@@ -162,11 +249,21 @@ mod tests {
         let mut ram = blank_ram();
         ram[0xFF47] = 0xE4; // BGP: identity mapping
         ram[0xFF40] = 0x10; // LCDC bit 4
-        ram[0x9800] = 1;    // tile map slot 0 → tile index 1
-        write_tile(&mut ram, 0x8010, [
-            (0xFF, 0xFF), (0, 0), (0, 0), (0, 0),
-            (0, 0), (0, 0), (0, 0), (0, 0),
-        ]);
+        ram[0x9800] = 1; // tile map slot 0 → tile index 1
+        write_tile(
+            &mut ram,
+            0x8010,
+            [
+                (0xFF, 0xFF),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+            ],
+        );
         let mut screen = blank_screen();
         render_frame(&ram, &mut screen);
         // First row of tile 1: all palette 3

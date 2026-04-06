@@ -220,7 +220,7 @@ impl Cpu {
             }
             Ret => {
                 new_pc = Some(m.read_word(Addr(r.sp)));
-                r.sp += 2;
+                r.sp = r.sp.wrapping_add(2);
             }
             Retc(cc) => {
                 conditional_taken = Some(false);
@@ -228,7 +228,7 @@ impl Cpu {
                 if flag == 1 {
                     conditional_taken = Some(true);
                     new_pc = Some(m.read_word(Addr(r.sp)));
-                    r.sp += 2;
+                    r.sp = r.sp.wrapping_add(2);
                 }
             }
             Stop(_op) => (),
@@ -244,7 +244,7 @@ impl Cpu {
             }
             Reti => {
                 new_pc = Some(m.read_word(Addr(r.sp)));
-                r.sp += 2;
+                r.sp = r.sp.wrapping_add(2);
                 r.ime = true;
             }
             Ei => self.ime_activation_countdown = 1,
@@ -264,9 +264,9 @@ impl Cpu {
             }
             Call(dst) => {
                 debug_assert!(dst.target_size() == 2);
-                let ret = r.pc + instruction.bytes as u16;
-                m.write_word(Addr(r.sp - 2), ret);
-                r.sp -= 2;
+                let ret = r.pc.wrapping_add(instruction.bytes as u16);
+                m.write_word(Addr(r.sp.wrapping_sub(2)), ret);
+                r.sp = r.sp.wrapping_sub(2);
                 new_pc = Some(dst.read_word(r, m));
             }
             Callc(condition, dst) => {
@@ -275,26 +275,26 @@ impl Cpu {
                 let flag = condition.read_byte(r, m);
                 if flag == 1 {
                     conditional_taken = Some(true);
-                    let ret = r.pc + instruction.bytes as u16;
-                    m.write_word(Addr(r.sp - 2), ret);
-                    r.sp -= 2;
+                    let ret = r.pc.wrapping_add(instruction.bytes as u16);
+                    m.write_word(Addr(r.sp.wrapping_sub(2)), ret);
+                    r.sp = r.sp.wrapping_sub(2);
                     new_pc = Some(dst.read_word(r, m));
                 }
             }
             Push(src) => {
                 debug_assert!(src.target_size() == 2);
-                m.write_word(Addr(r.sp - 2), src.read_word(r, m));
-                r.sp -= 2;
+                m.write_word(Addr(r.sp.wrapping_sub(2)), src.read_word(r, m));
+                r.sp = r.sp.wrapping_sub(2);
             }
             Pop(dst) => {
                 dst.write_word(r, m, m.read_word(Addr(r.sp)));
-                r.sp += 2;
+                r.sp = r.sp.wrapping_add(2);
             }
             Rst(dst) => {
-                let ret = r.pc + instruction.bytes as u16;
-                m.write_byte(Addr(r.sp - 1), (ret >> 8) as u8);
-                m.write_byte(Addr(r.sp - 2), ret as u8);
-                r.sp -= 2;
+                let ret = r.pc.wrapping_add(instruction.bytes as u16);
+                m.write_byte(Addr(r.sp.wrapping_sub(1)), (ret >> 8) as u8);
+                m.write_byte(Addr(r.sp.wrapping_sub(2)), ret as u8);
+                r.sp = r.sp.wrapping_sub(2);
                 new_pc = Some(dst as u16);
             }
             Ldhl(op) => {
@@ -341,7 +341,9 @@ impl Cpu {
         if let Some(new_pc) = new_pc {
             r.pc = new_pc;
         } else {
-            r.pc += instruction.bytes as u16;
+            r.pc =
+                r.pc.checked_add(instruction.bytes as u16)
+                    .unwrap_or_else(|| panic!("PC overflow at {:#06X}", r.pc));
         }
 
         let cycles = match instruction._cycles.as_slice() {
@@ -397,7 +399,7 @@ impl Cpu {
         match x {
             0 => {
                 let value = self.read_cb_target(z);
-                let mut out = value;
+                let out: u8;
                 match y {
                     0 => {
                         // RLC r

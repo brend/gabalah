@@ -149,6 +149,12 @@ impl Ram {
             self.joypad_select = value & 0x30;
             return;
         }
+        if address.0 == 0xFF46 {
+            let src_base = (value as usize) << 8;
+            let source_slice = &self.cells[src_base..src_base + 160].to_vec();
+            self.cells[0xFE00..0xFE00 + 160].copy_from_slice(source_slice);
+            return;
+        }
         self.cells[address.0 as usize] = value;
     }
 
@@ -176,7 +182,10 @@ impl Ram {
 
     pub fn read_word(&self, address: Addr) -> u16 {
         debug_assert!(address.0 < u16::MAX);
-        word(self.cells[address.0 as usize + 1], self.cells[address.0 as usize])
+        word(
+            self.cells[address.0 as usize + 1],
+            self.cells[address.0 as usize],
+        )
     }
 
     pub fn as_slice(&self) -> &[u8] {

@@ -1,6 +1,5 @@
 mod app;
 mod cpu;
-mod err;
 mod memory;
 mod renderer;
 

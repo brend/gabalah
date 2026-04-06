@@ -200,8 +200,8 @@ impl Emulator {
         // Emulation remark: this should cost 20 cycles
         self.cpu
             .memory
-            .write_word(Addr(self.cpu.registers.sp - 2), self.cpu.registers.pc);
-        self.cpu.registers.sp -= 2;
+            .write_word(Addr(self.cpu.registers.sp.wrapping_sub(2)), self.cpu.registers.pc);
+        self.cpu.registers.sp = self.cpu.registers.sp.wrapping_sub(2);
         self.cpu.registers.pc = vector;
     }
 
