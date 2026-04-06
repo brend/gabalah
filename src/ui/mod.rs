@@ -93,3 +93,54 @@ pub fn create_backend<'win>(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_backend_aliases() {
+        assert_eq!(
+            "pixels".parse::<GraphicsBackendKind>().expect("pixels should parse"),
+            GraphicsBackendKind::Pixels
+        );
+        assert_eq!(
+            "wgpu_shader"
+                .parse::<GraphicsBackendKind>()
+                .expect("wgpu_shader should parse"),
+            GraphicsBackendKind::WgpuShader
+        );
+        assert_eq!(
+            "wgpu"
+                .parse::<GraphicsBackendKind>()
+                .expect("wgpu alias should parse"),
+            GraphicsBackendKind::WgpuShader
+        );
+        assert_eq!(
+            "wgsl"
+                .parse::<GraphicsBackendKind>()
+                .expect("wgsl alias should parse"),
+            GraphicsBackendKind::WgpuShader
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_backend() {
+        let err = "not_a_backend"
+            .parse::<GraphicsBackendKind>()
+            .expect_err("unknown backend should fail");
+        assert!(err.contains("pixels, wgpu_shader"));
+    }
+
+    #[test]
+    fn clamps_shader_options_to_supported_ranges() {
+        let clamped = ShaderOptions {
+            scanline_strength: -5.0,
+            curvature: 999.0,
+        }
+        .clamped();
+
+        assert!((clamped.scanline_strength - 0.0).abs() < f32::EPSILON);
+        assert!((clamped.curvature - 0.35).abs() < f32::EPSILON);
+    }
+}

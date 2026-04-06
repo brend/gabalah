@@ -498,6 +498,7 @@ dependencies = [
  "env_logger",
  "getrandom 0.2.17",
  "log",
+ "naga",
  "pixels",
  "pollster",
  "randomize",

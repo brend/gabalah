@@ -326,3 +326,15 @@ impl GraphicsBackend for WgpuShaderBackend<'_> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SHADER_SOURCE;
+
+    #[test]
+    fn crt_wgsl_shader_parses() {
+        let module = naga::front::wgsl::parse_str(SHADER_SOURCE)
+            .expect("crt shader should parse as valid WGSL");
+        assert!(!module.entry_points.is_empty());
+    }
+}
