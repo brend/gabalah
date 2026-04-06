@@ -2,6 +2,8 @@
   "graphics_backend": "wgpu_shader",
   "shader": {
     "scanline_strength": 0.22,
-    "curvature": 0.1
+    "curvature": 0.1,
+    "mode": "palette_mutation",
+    "color_intensity": 0.82
   }
 }

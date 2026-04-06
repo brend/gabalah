@@ -1,4 +1,4 @@
-use super::{GraphicsBackend, GraphicsOptions, ShaderOptions, UiResult};
+use super::{GraphicsBackend, GraphicsOptions, ShaderColorMode, ShaderOptions, UiResult};
 use std::io;
 use std::time::Instant;
 use winit::window::Window;
@@ -10,17 +10,36 @@ struct ShaderUniforms {
     time_seconds: f32,
     scanline_strength: f32,
     curvature: f32,
-    _pad: f32,
+    color_intensity: f32,
+    color_mode: f32,
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
 }
 
 impl ShaderUniforms {
-    fn to_bytes(self) -> [u8; 16] {
-        let mut bytes = [0u8; 16];
+    fn to_bytes(self) -> [u8; 32] {
+        let mut bytes = [0u8; 32];
         bytes[0..4].copy_from_slice(&self.time_seconds.to_ne_bytes());
         bytes[4..8].copy_from_slice(&self.scanline_strength.to_ne_bytes());
         bytes[8..12].copy_from_slice(&self.curvature.to_ne_bytes());
-        bytes[12..16].copy_from_slice(&self._pad.to_ne_bytes());
+        bytes[12..16].copy_from_slice(&self.color_intensity.to_ne_bytes());
+        bytes[16..20].copy_from_slice(&self.color_mode.to_ne_bytes());
+        bytes[20..24].copy_from_slice(&self._pad0.to_ne_bytes());
+        bytes[24..28].copy_from_slice(&self._pad1.to_ne_bytes());
+        bytes[28..32].copy_from_slice(&self._pad2.to_ne_bytes());
         bytes
+    }
+}
+
+impl ShaderColorMode {
+    const fn as_uniform_value(self) -> f32 {
+        match self {
+            Self::Classic => 0.0,
+            Self::Prism => 1.0,
+            Self::Aurora => 2.0,
+            Self::PaletteMutation => 3.0,
+        }
     }
 }
 
@@ -123,11 +142,15 @@ impl<'win> WgpuShaderBackend<'win> {
             time_seconds: 0.0,
             scanline_strength: shader_options.scanline_strength,
             curvature: shader_options.curvature,
-            _pad: 0.0,
+            color_intensity: shader_options.color_intensity,
+            color_mode: shader_options.mode.as_uniform_value(),
+            _pad0: 0.0,
+            _pad1: 0.0,
+            _pad2: 0.0,
         };
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("gabalah-shader-uniforms"),
-            size: 16,
+            size: 32,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -268,7 +291,11 @@ impl GraphicsBackend for WgpuShaderBackend<'_> {
             time_seconds: self.start_time.elapsed().as_secs_f32(),
             scanline_strength: self.shader_options.scanline_strength,
             curvature: self.shader_options.curvature,
-            _pad: 0.0,
+            color_intensity: self.shader_options.color_intensity,
+            color_mode: self.shader_options.mode.as_uniform_value(),
+            _pad0: 0.0,
+            _pad1: 0.0,
+            _pad2: 0.0,
         };
         self.queue
             .write_buffer(&self.uniform_buffer, 0, &uniforms.to_bytes());

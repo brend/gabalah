@@ -318,7 +318,11 @@ mod tests {
         write_tile(&mut ram, 0x8010, [(0xFF, 0xFF); 8]); // tile 1: shade 3
         let mut screen = blank_screen();
         render_frame(&ram, &mut screen);
-        assert_eq!(pixel(&screen, 0, 0), GB_COLORS[0], "window-off must not overwrite BG");
+        assert_eq!(
+            pixel(&screen, 0, 0),
+            GB_COLORS[0],
+            "window-off must not overwrite BG"
+        );
     }
 
     #[test]
@@ -332,9 +336,17 @@ mod tests {
         write_tile(&mut ram, 0x8010, [(0xFF, 0xFF); 8]); // tile 1: shade 3
         let mut screen = blank_screen();
         render_frame(&ram, &mut screen);
-        assert_eq!(pixel(&screen, 7, 5), GB_COLORS[0], "left of window edge must stay BG");
+        assert_eq!(
+            pixel(&screen, 7, 5),
+            GB_COLORS[0],
+            "left of window edge must stay BG"
+        );
         assert_eq!(pixel(&screen, 8, 4), GB_COLORS[0], "above WY must stay BG");
-        assert_eq!(pixel(&screen, 8, 5), GB_COLORS[3], "window should appear at WX-7,WY");
+        assert_eq!(
+            pixel(&screen, 8, 5),
+            GB_COLORS[3],
+            "window should appear at WX-7,WY"
+        );
     }
 
     // --- Sprite (OBJ) rendering ---
@@ -346,12 +358,8 @@ mod tests {
         ram[0xFF47] = 0xE4; // BGP: identity
         ram[0xFF40] = 0xA1; // LCDC: display on, BG on, window on, OBJ off (bit 1 = 0)
         ram[0xFF48] = 0xE4; // OBP0: identity
-        // Place a solid sprite tile at VRAM index 1
-        write_tile(
-            &mut ram,
-            0x8010,
-            [(0xFF, 0xFF); 8],
-        );
+                            // Place a solid sprite tile at VRAM index 1
+        write_tile(&mut ram, 0x8010, [(0xFF, 0xFF); 8]);
         // OAM entry 0: Y=24 (screen 8), X=16 (screen 8), tile 1
         ram[0xFE00] = 24;
         ram[0xFE01] = 16;
@@ -359,7 +367,11 @@ mod tests {
         let mut screen = blank_screen();
         render_frame(&ram, &mut screen);
         // Background with all-zero tile data → shade 0 everywhere
-        assert_eq!(pixel(&screen, 8, 8), GB_COLORS[0], "sprite must not appear when OBJ disabled");
+        assert_eq!(
+            pixel(&screen, 8, 8),
+            GB_COLORS[0],
+            "sprite must not appear when OBJ disabled"
+        );
     }
 
     #[test]
@@ -369,15 +381,23 @@ mod tests {
         ram[0xFF40] = 0x93; // LCDC: display on, BG on, OBJ on (bit 1), unsigned tile data (bit 4)
         ram[0xFF47] = 0xE4; // BGP: identity (background stays shade 0)
         ram[0xFF48] = 0xE4; // OBP0: identity
-        // Sprite tile 1 at 0x8010: all pixels palette index 3
+                            // Sprite tile 1 at 0x8010: all pixels palette index 3
         write_tile(&mut ram, 0x8010, [(0xFF, 0xFF); 8]);
         ram[0xFE00] = 24; // Y: screen row 8
         ram[0xFE01] = 16; // X: screen col 8
-        ram[0xFE02] = 1;  // tile index
+        ram[0xFE02] = 1; // tile index
         let mut screen = blank_screen();
         render_frame(&ram, &mut screen);
-        assert_eq!(pixel(&screen, 8, 8), GB_COLORS[3], "sprite pixel should be shade 3");
-        assert_eq!(pixel(&screen, 0, 0), GB_COLORS[0], "background outside sprite untouched");
+        assert_eq!(
+            pixel(&screen, 8, 8),
+            GB_COLORS[3],
+            "sprite pixel should be shade 3"
+        );
+        assert_eq!(
+            pixel(&screen, 0, 0),
+            GB_COLORS[0],
+            "background outside sprite untouched"
+        );
     }
 
     #[test]
@@ -394,7 +414,11 @@ mod tests {
         ram[0xFE02] = 1;
         let mut screen = blank_screen();
         render_frame(&ram, &mut screen);
-        assert_eq!(pixel(&screen, 8, 8), GB_COLORS[0], "transparent sprite must not overwrite BG");
+        assert_eq!(
+            pixel(&screen, 8, 8),
+            GB_COLORS[0],
+            "transparent sprite must not overwrite BG"
+        );
     }
 
     #[test]

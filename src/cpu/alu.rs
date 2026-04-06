@@ -1,4 +1,6 @@
-use super::{CARRY_FLAG_BITMASK, HALF_CARRY_FLAG_BITMASK, SUBTRACTION_FLAG_BITMASK, ZERO_FLAG_BITMASK};
+use super::{
+    CARRY_FLAG_BITMASK, HALF_CARRY_FLAG_BITMASK, SUBTRACTION_FLAG_BITMASK, ZERO_FLAG_BITMASK,
+};
 
 pub trait Flags {
     fn zero(&self) -> bool;
@@ -100,7 +102,7 @@ pub fn add16(value1: u16, value2: u16, flags: &mut u8) -> u16 {
     flags.set_half_carry((value1 & 0x0FFF) + (value2 & 0x0FFF) > 0x0FFF);
     flags.set_carry((value1 as u32) + (value2 as u32) > 0xFFFF);
     result
-} 
+}
 
 pub fn adc8(value1: u8, value2: u8, flags: &mut u8) -> u8 {
     let carry = flags.carry() as u8;
@@ -122,12 +124,12 @@ pub fn adc16(value1: u16, value2: u16, flags: &mut u8) -> u16 {
 }
 
 pub fn sub8(value1: u8, value2: u8, flags: &mut u8) -> u8 {
-            let result = value1.wrapping_sub(value2);
-            flags.set_zero(result == 0);
-            flags.set_subtraction(true);
-            flags.set_half_carry((value1 & 0x0F) < (value2 & 0x0F));
-            flags.set_carry(value1 < value2);
-            result
+    let result = value1.wrapping_sub(value2);
+    flags.set_zero(result == 0);
+    flags.set_subtraction(true);
+    flags.set_half_carry((value1 & 0x0F) < (value2 & 0x0F));
+    flags.set_carry(value1 < value2);
+    result
 }
 
 pub fn sub16(value1: u16, value2: u16, flags: &mut u8) -> u16 {

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use gabalah::memory::{Registers, Ram, Addr};
+    use gabalah::memory::{Addr, Ram, Registers};
 
     fn setup() -> Registers {
         Registers::default()
@@ -32,8 +32,12 @@ mod tests {
     // Bit 5 clear = action group; bit 4 clear = direction group.
     fn select_group(ram: &mut Ram, action: bool, direction: bool) {
         let mut val = 0x30u8; // both groups deselected
-        if action    { val &= !0x20; }
-        if direction { val &= !0x10; }
+        if action {
+            val &= !0x20;
+        }
+        if direction {
+            val &= !0x10;
+        }
         ram.write_byte(Addr(0xFF00), val);
     }
 
@@ -42,7 +46,11 @@ mod tests {
         let mut ram = joypad_ram();
         select_group(&mut ram, true, false);
         let result = ram.read_byte(Addr(0xFF00));
-        assert_eq!(result & 0x0F, 0x0F, "all action bits should be high when nothing pressed");
+        assert_eq!(
+            result & 0x0F,
+            0x0F,
+            "all action bits should be high when nothing pressed"
+        );
     }
 
     #[test]
@@ -72,7 +80,11 @@ mod tests {
         select_group(&mut ram, false, true);
         let result = ram.read_byte(Addr(0xFF00));
         assert_eq!(result & 0x01, 0, "Right (bit 0) should be low when pressed");
-        assert_eq!(result & 0x0E, 0x0E, "other direction bits should remain high");
+        assert_eq!(
+            result & 0x0E,
+            0x0E,
+            "other direction bits should remain high"
+        );
     }
 
     #[test]
@@ -81,7 +93,11 @@ mod tests {
         ram.direction_buttons = 0x0F; // all directions pressed
         select_group(&mut ram, true, false); // only action group selected
         let result = ram.read_byte(Addr(0xFF00));
-        assert_eq!(result & 0x0F, 0x0F, "direction buttons must not bleed into action group read");
+        assert_eq!(
+            result & 0x0F,
+            0x0F,
+            "direction buttons must not bleed into action group read"
+        );
     }
 
     #[test]
@@ -90,19 +106,27 @@ mod tests {
         ram.action_buttons = 0x0F; // all actions pressed
         select_group(&mut ram, false, true); // only direction group selected
         let result = ram.read_byte(Addr(0xFF00));
-        assert_eq!(result & 0x0F, 0x0F, "action buttons must not bleed into direction group read");
+        assert_eq!(
+            result & 0x0F,
+            0x0F,
+            "action buttons must not bleed into direction group read"
+        );
     }
 
     #[test]
     fn joypad_both_groups_selected_results_are_anded() {
         let mut ram = joypad_ram();
-        ram.action_buttons = 0x01;    // A pressed (bit 0 of action)
+        ram.action_buttons = 0x01; // A pressed (bit 0 of action)
         ram.direction_buttons = 0x02; // Left pressed (bit 1 of direction)
         select_group(&mut ram, true, true);
         let result = ram.read_byte(Addr(0xFF00));
         // bit 0: A pressed → low; bit 1: Left pressed → low; rest high
         assert_eq!(result & 0x01, 0, "bit 0 low: A pressed in action group");
-        assert_eq!(result & 0x02, 0, "bit 1 low: Left pressed in direction group");
+        assert_eq!(
+            result & 0x02,
+            0,
+            "bit 1 low: Left pressed in direction group"
+        );
         assert_eq!(result & 0x0C, 0x0C, "bits 2-3 high: nothing pressed there");
     }
 
@@ -114,7 +138,11 @@ mod tests {
         ram.write_byte(Addr(0xFF00), 0xFF);
         // With 0xFF written, bits 4 and 5 are set → neither group selected
         let result = ram.read_byte(Addr(0xFF00));
-        assert_eq!(result & 0x0F, 0x0F, "no group selected: all bits high regardless of pressed buttons");
+        assert_eq!(
+            result & 0x0F,
+            0x0F,
+            "no group selected: all bits high regardless of pressed buttons"
+        );
         assert_eq!(result & 0x30, 0x30, "select bits reflected back");
     }
 
@@ -216,7 +244,11 @@ mod tests {
         ram.write_byte(Addr(0xFF41), 0x00); // clear writable bits
         let stat = ram.read_byte(Addr(0xFF41));
         assert_eq!(stat & 0x80, 0x80, "STAT bit 7 should stay set");
-        assert_eq!(stat & 0x07, 0x07, "mode/coincidence bits should be preserved");
+        assert_eq!(
+            stat & 0x07,
+            0x07,
+            "mode/coincidence bits should be preserved"
+        );
     }
 
     // --- Memory map behavior ---

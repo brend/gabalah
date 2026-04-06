@@ -1,3 +1,3 @@
 mod ram;
 
-pub use ram::{Registers, Ram, Addr};
+pub use ram::{Addr, Ram, Registers};

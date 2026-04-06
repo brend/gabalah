@@ -52,6 +52,8 @@ impl FromStr for GraphicsBackendKind {
 pub struct ShaderOptions {
     pub scanline_strength: f32,
     pub curvature: f32,
+    pub color_intensity: f32,
+    pub mode: ShaderColorMode,
 }
 
 impl ShaderOptions {
@@ -59,6 +61,8 @@ impl ShaderOptions {
         Self {
             scanline_strength: self.scanline_strength.clamp(0.0, 1.0),
             curvature: self.curvature.clamp(0.0, 0.35),
+            color_intensity: self.color_intensity.clamp(0.0, 1.5),
+            mode: self.mode,
         }
     }
 }
@@ -68,6 +72,36 @@ impl Default for ShaderOptions {
         Self {
             scanline_strength: 0.18,
             curvature: 0.08,
+            color_intensity: 0.65,
+            mode: ShaderColorMode::Classic,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ShaderColorMode {
+    #[default]
+    Classic,
+    Prism,
+    Aurora,
+    PaletteMutation,
+}
+
+impl FromStr for ShaderColorMode {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let normalized = value.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "classic" | "crt" | "default" => Ok(Self::Classic),
+            "prism" | "chromashift" | "chroma_shift" | "chroma-shift" => Ok(Self::Prism),
+            "aurora" | "acid" | "vapor" => Ok(Self::Aurora),
+            "palette_mutation" | "palette-mutation" | "mutation" | "mutant" => {
+                Ok(Self::PaletteMutation)
+            }
+            _ => Err(format!(
+                "unsupported shader mode '{value}'. Supported values: classic, prism, aurora, palette_mutation"
+            )),
         }
     }
 }
@@ -101,7 +135,9 @@ mod tests {
     #[test]
     fn parses_backend_aliases() {
         assert_eq!(
-            "pixels".parse::<GraphicsBackendKind>().expect("pixels should parse"),
+            "pixels"
+                .parse::<GraphicsBackendKind>()
+                .expect("pixels should parse"),
             GraphicsBackendKind::Pixels
         );
         assert_eq!(
@@ -137,10 +173,50 @@ mod tests {
         let clamped = ShaderOptions {
             scanline_strength: -5.0,
             curvature: 999.0,
+            color_intensity: 9.0,
+            mode: ShaderColorMode::Prism,
         }
         .clamped();
 
         assert!((clamped.scanline_strength - 0.0).abs() < f32::EPSILON);
         assert!((clamped.curvature - 0.35).abs() < f32::EPSILON);
+        assert!((clamped.color_intensity - 1.5).abs() < f32::EPSILON);
+        assert_eq!(clamped.mode, ShaderColorMode::Prism);
+    }
+
+    #[test]
+    fn parses_shader_color_mode_aliases() {
+        assert_eq!(
+            "classic"
+                .parse::<ShaderColorMode>()
+                .expect("classic should parse"),
+            ShaderColorMode::Classic
+        );
+        assert_eq!(
+            "chroma-shift"
+                .parse::<ShaderColorMode>()
+                .expect("chroma-shift should parse"),
+            ShaderColorMode::Prism
+        );
+        assert_eq!(
+            "acid"
+                .parse::<ShaderColorMode>()
+                .expect("acid alias should parse"),
+            ShaderColorMode::Aurora
+        );
+        assert_eq!(
+            "palette-mutation"
+                .parse::<ShaderColorMode>()
+                .expect("palette-mutation should parse"),
+            ShaderColorMode::PaletteMutation
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_shader_color_mode() {
+        let err = "not-a-mode"
+            .parse::<ShaderColorMode>()
+            .expect_err("unknown shader mode should fail");
+        assert!(err.contains("classic, prism, aurora, palette_mutation"));
     }
 }

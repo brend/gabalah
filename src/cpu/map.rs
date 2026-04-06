@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use super::Instruction;
-use super::ops::Mnemonic::*;
 use super::ops::Location::*;
+use super::ops::Mnemonic::*;
+use super::Instruction;
 
 type I = Instruction;
 
@@ -82,7 +82,6 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         (0x21, I::new(Ld(HL.imm(), Const16.imm()), 3, 12)),
         // load A into [HL]. Increment HL
         (0x22, I::new(LdHliA, 1, 8)),
-
         // increase HL
         (0x23, I::new(Inc(HL.imm()), 1, 8)),
         // increase H
@@ -560,6 +559,6 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // restart from 0x38
         (0xFF, I::new(Rst(0x38), 1, 16)),
     ]);
-    
+
     map
 }

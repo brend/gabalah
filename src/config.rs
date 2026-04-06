@@ -1,4 +1,4 @@
-use crate::ui::{GraphicsBackendKind, GraphicsOptions, ShaderOptions};
+use crate::ui::{GraphicsBackendKind, GraphicsOptions, ShaderColorMode, ShaderOptions};
 use serde::Deserialize;
 use std::fs;
 use std::io;
@@ -18,6 +18,8 @@ struct AppConfig {
 struct ShaderConfig {
     scanline_strength: Option<f32>,
     curvature: Option<f32>,
+    color_intensity: Option<f32>,
+    mode: Option<String>,
 }
 
 pub fn load_graphics_settings(
@@ -42,12 +44,26 @@ fn load_graphics_settings_from_path(
     };
 
     let defaults = ShaderOptions::default();
+    let mode = match cfg.shader.mode.as_deref() {
+        Some(value) => value.parse::<ShaderColorMode>().map_err(|msg| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Invalid shader.mode in {config_name}: {msg}"),
+            )
+        })?,
+        None => defaults.mode,
+    };
     let shader = ShaderOptions {
         scanline_strength: cfg
             .shader
             .scanline_strength
             .unwrap_or(defaults.scanline_strength),
         curvature: cfg.shader.curvature.unwrap_or(defaults.curvature),
+        color_intensity: cfg
+            .shader
+            .color_intensity
+            .unwrap_or(defaults.color_intensity),
+        mode,
     }
     .clamped();
 
@@ -85,6 +101,8 @@ mod tests {
         let defaults = ShaderOptions::default();
         assert_eq!(options.shader.scanline_strength, defaults.scanline_strength);
         assert_eq!(options.shader.curvature, defaults.curvature);
+        assert_eq!(options.shader.color_intensity, defaults.color_intensity);
+        assert_eq!(options.shader.mode, defaults.mode);
     }
 
     #[test]
@@ -94,7 +112,9 @@ mod tests {
                 "graphics_backend": "wgpu_shader",
                 "shader": {
                     "scanline_strength": 0.27,
-                    "curvature": 0.11
+                    "curvature": 0.11,
+                    "color_intensity": 1.2,
+                    "mode": "palette_mutation"
                 }
             }"#,
         );
@@ -104,6 +124,8 @@ mod tests {
         assert_eq!(backend, GraphicsBackendKind::WgpuShader);
         assert!((options.shader.scanline_strength - 0.27).abs() < f32::EPSILON);
         assert!((options.shader.curvature - 0.11).abs() < f32::EPSILON);
+        assert!((options.shader.color_intensity - 1.2).abs() < f32::EPSILON);
+        assert_eq!(options.shader.mode, ShaderColorMode::PaletteMutation);
 
         let _ = fs::remove_file(path);
     }
@@ -132,15 +154,37 @@ mod tests {
                 "graphics_backend": "wgpu_shader",
                 "shader": {
                     "scanline_strength": 9.0,
-                    "curvature": -5.0
+                    "curvature": -5.0,
+                    "color_intensity": -3.0
                 }
             }"#,
         );
 
-        let (_, options) =
-            load_graphics_settings_from_path(&path).expect("config with out-of-range values should parse");
+        let (_, options) = load_graphics_settings_from_path(&path)
+            .expect("config with out-of-range values should parse");
         assert!((options.shader.scanline_strength - 1.0).abs() < f32::EPSILON);
         assert!((options.shader.curvature - 0.0).abs() < f32::EPSILON);
+        assert!((options.shader.color_intensity - 0.0).abs() < f32::EPSILON);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn rejects_invalid_shader_mode() {
+        let path = write_temp_config(
+            r#"{
+                "graphics_backend": "wgpu_shader",
+                "shader": {
+                    "mode": "definitely_not_supported"
+                }
+            }"#,
+        );
+
+        let err = load_graphics_settings_from_path(&path)
+            .expect_err("invalid shader mode should return an error");
+        let msg = err.to_string();
+        assert!(msg.contains("Invalid shader.mode"));
+        assert!(msg.contains("classic, prism, aurora, palette_mutation"));
 
         let _ = fs::remove_file(path);
     }

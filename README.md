@@ -27,7 +27,9 @@ Gabalah reads optional graphics settings from `config.json` in the project root.
   "graphics_backend": "wgpu_shader",
   "shader": {
     "scanline_strength": 0.22,
-    "curvature": 0.10
+    "curvature": 0.10,
+    "mode": "palette_mutation",
+    "color_intensity": 0.82
   }
 }
 ```
@@ -35,7 +37,16 @@ Gabalah reads optional graphics settings from `config.json` in the project root.
 Supported values for `"graphics_backend"`:
 
 - `"pixels"`: existing `pixels` presentation path
-- `"wgpu_shader"`: WGSL shader-based backend (scanline + CRT curvature pass)
+- `"wgpu_shader"`: WGSL shader-based backend (scanline + CRT curvature + color modes)
+
+Supported values for `"shader.mode"`:
+
+- `"classic"`: original CRT-like look
+- `"prism"`: chromatic split + rainbow tinting
+- `"aurora"`: animated neon channel remap
+- `"palette_mutation"`: quantized-tone procedural palette remap (wildest mode)
+
+`"shader.color_intensity"` controls how strong the non-classic color modes are (range `0.0..1.5`).
 
 Press `R` while running to reload shader settings from `config.json` without restarting.
 Changing `"graphics_backend"` still requires restarting the app.
