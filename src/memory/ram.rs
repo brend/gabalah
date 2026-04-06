@@ -135,7 +135,7 @@ impl Ram {
             joypad_select: 0x30, // neither group selected initially
             action_buttons: 0,
             direction_buttons: 0,
-            div_counter: 0,
+            div_counter: 0x183A,
             tima_counter: 0,
         }
     }
