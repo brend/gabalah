@@ -34,9 +34,13 @@ Last updated: 2026-04-06
 - STAT mode/coincidence bits are updated, but STAT IRQ generation is currently disabled
 
 ### App / Display
-- winit event loop with `pixels` backend (160×144, scaled 3×)
+- winit event loop with pluggable graphics backends (160×144, scaled 3×)
+- `graphics_backend` selection via `config.json` (`pixels` or `wgpu_shader`)
+- `pixels` backend path retained behind the graphics abstraction
+- `wgpu_shader` backend with WGSL CRT-like pass (curvature + scanlines)
 - Frame pacing near 59.7 FPS (`FRAME_DURATION` based on 70,224 cycles/frame)
 - Per-frame CPU stepping with LCD timing progression
+- Runtime shader config hot-reload via `R` (re-reads shader fields from `config.json`)
 - Debug frame dump hotkey (`F9`) writes frame + LCD/VRAM/OAM artifacts to `debug_dumps/`
 
 ### PPU / Renderer
@@ -57,6 +61,9 @@ Last updated: 2026-04-06
 - STAT interrupt generation disabled pending tighter timing accuracy
 - No per-scanline register latching/render pipeline (mid-scanline effects not emulated)
 
+### UI/backend limitations
+- Backend type changes still require restart (runtime reload applies backend options only)
+
 ### Cartridge / hardware
 - No cartridge abstraction (MBC1/MBC3/MBC5 not implemented)
 - No save RAM persistence (`.sav`)
@@ -71,5 +78,7 @@ Last updated: 2026-04-06
 | CPU core ops | 28 (`tests/ops.rs`) | passing |
 | Memory/IO/timer/joypad/DMA | 23 (`tests/cpu.rs`) | passing |
 | Renderer (BG/window/OBJ baseline) | 10 (`src/renderer.rs`) | passing |
+| Graphics config/backend parsing | 7 (`src/config.rs`, `src/ui/mod.rs`) | passing |
+| WGSL shader parse smoke test | 1 (`src/ui/wgpu_shader_backend.rs`) | passing |
 | Interrupt conformance ROMs | partial/manual | in progress |
 | PPU conformance ROMs | partial/manual | in progress |

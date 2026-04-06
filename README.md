@@ -38,6 +38,7 @@ Supported values for `"graphics_backend"`:
 - `"wgpu_shader"`: WGSL shader-based backend (scanline + CRT curvature pass)
 
 Press `R` while running to reload shader settings from `config.json` without restarting.
+Changing `"graphics_backend"` still requires restarting the app.
 
 ### Controls
 

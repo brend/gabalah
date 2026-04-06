@@ -19,6 +19,17 @@ Items are ordered by dependency. Check off items as they are done and keep `STAT
 
 ---
 
+## Phase 1.5 — Graphics Backend Flexibility
+
+- [x] Introduce backend-agnostic graphics interface
+- [x] Move existing `pixels` path behind backend abstraction
+- [x] Add `config.json` graphics backend selection
+- [x] Add `wgpu` WGSL shader backend
+- [x] Add runtime shader-config reload hotkey (`R`)
+- [ ] Allow runtime backend switching without restart
+
+---
+
 ## Phase 2 — PPU (Pixel Processing Unit)
 
 - [x] Background tile rendering (tile map + tile data + SCX/SCY)
@@ -87,6 +98,8 @@ Items are ordered by dependency. Check off items as they are done and keep `STAT
 
 - [x] Unit tests for renderer paths (BG/window/sprite baseline)
 - [x] Unit tests for memory map edge behavior
+- [x] Unit tests for graphics config/backend parsing and clamping
+- [x] Shader syntax smoke test for WGSL path
 - [ ] Add automated ROM acceptance harness in CI
 - [ ] Pass broader mooneye/blargg PPU timing suites
 - [ ] Pass `dmg-acid2`
