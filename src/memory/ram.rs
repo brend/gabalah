@@ -171,9 +171,8 @@ impl Ram {
 
     /// Sets the word at the specified address to the specified value
     pub fn write_word(&mut self, address: Addr, value: u16) {
-        debug_assert!(address.0 < u16::MAX);
         self.cells[address.0 as usize] = lo(value);
-        self.cells[address.0 as usize + 1] = hi(value);
+        self.cells[address.0.wrapping_add(1) as usize] = hi(value);
     }
 
     /// Retrieves the byte at the specified address
@@ -227,9 +226,8 @@ impl Ram {
     }
 
     pub fn read_word(&self, address: Addr) -> u16 {
-        debug_assert!(address.0 < u16::MAX);
         word(
-            self.cells[address.0 as usize + 1],
+            self.cells[address.0.wrapping_add(1) as usize],
             self.cells[address.0 as usize],
         )
     }

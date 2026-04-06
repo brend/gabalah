@@ -15,6 +15,7 @@ pub struct Cpu {
     pub total_cycles: u64,
     opcode_map: HashMap<u8, Instruction>,
     ime_activation_countdown: i32,
+    pub halted: bool,
 }
 
 impl Cpu {
@@ -26,6 +27,7 @@ impl Cpu {
             total_cycles: 0,
             opcode_map: map::build_opcode_map(),
             ime_activation_countdown: 0,
+            halted: false,
         }
     }
 
@@ -36,6 +38,15 @@ impl Cpu {
 
     /// Executes the next instruction, returning the number of cycles consumed
     pub fn step(&mut self) -> usize {
+        if self.halted {
+            let ie = self.get_ie();
+            let ifr = self.get_if();
+            if (ie & ifr) != 0 {
+                self.halted = false;
+            }
+            self.total_cycles += 4;
+            return 4;
+        }
         let opcode = self.memory.read_byte(Addr(self.registers.pc));
         if opcode == 0xCB {
             let cb_opcode = self
@@ -234,10 +245,15 @@ impl Cpu {
             Stop(_op) => (),
             Halt => {
                 if r.ime {
-                    // burn cycles while no interrupt event
                     if (ie_contents & if_contents) == 0 {
-                        new_pc = Some(r.pc)
+                        // No interrupt pending yet; enter halted state.
+                        // PC will advance to HALT+1 so that when an interrupt
+                        // fires, the return address pushed onto the stack is
+                        // the instruction *after* HALT, not HALT itself.
+                        self.halted = true;
                     }
+                    // If interrupt already pending, HALT exits immediately;
+                    // PC advances normally and the interrupt fires below.
                 } else {
                     // TODO: implement HALT bug behavior
                 }
