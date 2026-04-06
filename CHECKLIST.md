@@ -14,7 +14,7 @@ Check off items as they are done and update `STATUS.md` accordingly.
 - [x] Fix ROM load address: load at `0x0000`, set PC to `0x0100`
 - [x] Fix SP initial value: `0xFFFE`
 - [x] Initialise hardware registers to post-boot DMG0 values
-  - CPU: AF=0x01B0, BC=0x0013, DE=0x00D8, HL=0x014D, SP=0xFFFE, PC=0x0100
+  - CPU: AF=0x0100, BC=0xFF13, DE=0x00C1, HL=0x8403, SP=0xFFFE, PC=0x0100 (DMG0)
   - Timer: div_counter=0x183A (DIV=0x18), TIMA=0x00, TMA=0x00, TAC=0xF8
   - Interrupts: IF=0xE1
   - PPU: LCDC=0x91, BGP=0xFC, OBP0=0xFF, OBP1=0xFF

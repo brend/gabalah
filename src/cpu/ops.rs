@@ -276,10 +276,14 @@ impl Operand {
         }
     }
 
-    pub fn write_word(&self, registers: &mut Registers, _memory: &mut Ram, value: u16) {
+    pub fn write_word(&self, registers: &mut Registers, memory: &mut Ram, value: u16) {
         match self {
             Operand::Immediate(loc) => loc.write_word(registers, value),
-            _ => panic!("Invalid operand size"),
+            Operand::Indirect(loc) => {
+                let addr = loc.read_word(registers, memory);
+                memory.write_word(Addr(addr), value);
+            }
+            Operand::HighMemory(_) => panic!("Invalid operand size for write_word"),
         }
     }
 }

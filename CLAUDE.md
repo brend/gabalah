@@ -25,8 +25,8 @@ src/
 ## Key Architectural Facts
 
 - **CPU**: `Cpu::step()` fetches an opcode, delegates to `execute()` (base set) or `execute_cb()` (CB-prefixed), and returns the cycle count consumed.
-- **Memory**: `Ram` is a flat `[u8; 65536]`. ROM is loaded at `0x0100` (should be `0x0000` — known bug, tracked in `STATUS.md`).
-- **Registers**: `pc` initialises to `0x0100`. `ime` (interrupt master enable) is a bool field on `Registers`.
+- **Memory**: `Ram` is a flat `[u8; 65536]`. ROM is loaded at `0x0000`; PC initialises to `0x0100` (correct post-boot handoff). `Ram::new()` pre-loads DMG0 post-boot I/O register values (LCDC, BGP, IF, TAC, OBP0/1) and sets `div_counter = 0x183A`.
+- **Registers**: Post-boot DMG0 state: AF=`0x0100`, BC=`0xFF13`, DE=`0x00C1`, HL=`0x8403`, SP=`0xFFFE`, PC=`0x0100`. `ime` (interrupt master enable) is a bool field on `Registers`, initialised `false`.
 - **Cycles**: `Cpu::total_cycles` accumulates over the session. The app loop runs ~70,224 cycles per frame (`CYCLES_PER_FRAME` in `app.rs`).
 - **Display**: `Emulator::draw()` calls `renderer::render_frame()`, which renders the BG tile layer at 160×144 scaled 3×. Frame rate is capped at ~59.7 fps via `FRAME_DURATION`.
 - **renderer.rs**: Full BG renderer — reads tile map (LCDC bit 3), tile data (LCDC bit 4, signed/unsigned), SCX/SCY scroll, BGP palette. Window and sprite layers not yet implemented.

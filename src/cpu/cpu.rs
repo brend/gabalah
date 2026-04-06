@@ -91,13 +91,12 @@ impl Cpu {
         match instruction.mnemonic {
             Nop => (),
             Ld(dst, src) => {
-                if dst.target_size() == 1 {
-                    let byte = src.read_byte(r, m);
-                    dst.write_byte(r, m, byte);
-                } else {
-                    // TODO: Handle Stack Pointer shenanigans
+                if dst.target_size() == 2 || src.target_size() == 2 {
                     let word = src.read_word(r, m);
                     dst.write_word(r, m, word);
+                } else {
+                    let byte = src.read_byte(r, m);
+                    dst.write_byte(r, m, byte);
                 }
             }
             Inc(dst) => {
@@ -244,18 +243,12 @@ impl Cpu {
             }
             Stop(_op) => (),
             Halt => {
-                if r.ime {
-                    if (ie_contents & if_contents) == 0 {
-                        // No interrupt pending yet; enter halted state.
-                        // PC will advance to HALT+1 so that when an interrupt
-                        // fires, the return address pushed onto the stack is
-                        // the instruction *after* HALT, not HALT itself.
-                        self.halted = true;
-                    }
-                    // If interrupt already pending, HALT exits immediately;
-                    // PC advances normally and the interrupt fires below.
+                let pending = (ie_contents & if_contents) != 0;
+                if pending && !r.ime {
+                    // HALT bug: CPU fails to halt; next byte is read twice.
+                    // TODO: implement the double-read; for now just continue.
                 } else {
-                    // TODO: implement HALT bug behavior
+                    self.halted = true;
                 }
             }
             Reti => {

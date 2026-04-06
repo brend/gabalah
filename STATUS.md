@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-04-05
+Last updated: 2026-04-06
 
 ## What Works
 
@@ -12,7 +12,10 @@ Last updated: 2026-04-05
 - Stack operations: PUSH, POP, CALL, RET, RETI, RST
 - Conditional jumps and calls (JR cc, JP cc, CALL cc, RET cc)
 - High-memory addressing (LDH / 0xFF00+n)
+- `LD (nn), SP` (opcode `0x08`) — stores SP to a 16-bit memory address
 - IME (interrupt master enable): EI schedules activation after 1 instruction delay; DI clears immediately
+- HALT: suspends CPU until a pending interrupt wakes it; HALT bug (IME=0 + pending interrupt) stubbed
+- Post-boot DMG0 hardware state: CPU registers AF=`0x0100`, BC=`0xFF13`, DE=`0x00C1`, HL=`0x8403`, SP=`0xFFFE`; I/O registers TAC=`0xF8`, IF=`0xE1`, LCDC=`0x91`, BGP=`0xFC`, OBP0/1=`0xFF`; DIV counter=`0x183A`
 - Cycle counting: `step()` returns cycles consumed; `total_cycles` accumulates
 - 28 passing integration tests
 
@@ -40,8 +43,7 @@ Last updated: 2026-04-05
 ### Hardware not yet implemented
 - **PPU (Pixel Processing Unit)** — Background layer renders; window and sprite layers not yet implemented. STAT register, mode transitions, and VBLANK interrupt not yet connected.
 - **Interrupt system** — IF (`0xFF0F`) and IE (`0xFFFF`) registers are plain memory bytes. No interrupt dispatch pipeline. VBLANK, Timer, Joypad interrupts not fired.
-- **Timer** — DIV (`0xFF04`), TIMA (`0xFF05`), TMA (`0xFF06`), TAC (`0xFF07`) not implemented.
-- **HALT** — currently a no-op; should suspend CPU until an interrupt is pending.
+- **HALT bug** — when IME=0 and an interrupt is already pending, the next byte should be read twice. Currently a stub (execution continues normally).
 - **STOP** — currently a no-op.
 - **Joypad** — no input mapped to `0xFF00`.
 - **Serial port** — not implemented (`0xFF01`/`0xFF02`).
@@ -49,9 +51,8 @@ Last updated: 2026-04-05
 
 ### Minor / polish
 - ~~`sp` initialises to `0x0000` instead of the correct post-boot value of `0xFFFE`.~~ — fixed.
-- TODO in `cpu.rs:69`: SP-relative 16-bit loads (`LD (nn), SP`) need verification.
+- ~~`LD (nn), SP` not implemented.~~ — fixed.
 - `err.rs` contains dead code — will be cleaned up.
-- OBP0 (`0xFF48`) and OBP1 (`0xFF49`) palette registers not yet implemented (needed for sprites).
 - LCDC bit 7 (BG/Window master enable) not yet checked in renderer.
 
 ## Test Coverage
