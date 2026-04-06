@@ -18,6 +18,25 @@ Gabalah expects a path to a ROM file as its single command line argument.
 $ cargo run path/to/some_rom.gb
 ```
 
+### Controls
+
+- D-Pad: Arrow keys
+- A: `Z`
+- B: `X`
+- Select: Right Shift
+- Start: Enter
+- Debug frame dump: `F9`
+
+### Debug Frame Dumps
+
+Press `F9` while the emulator is running to dump the current frame and PPU state
+to `debug_dumps/`:
+
+- `frame_XXXX.ppm` — rendered frame image
+- `frame_XXXX.txt` — key LCD/interrupt registers
+- `frame_XXXX_vram.bin` — VRAM snapshot (`0x8000..0x9FFF`)
+- `frame_XXXX_oam.bin` — OAM snapshot (`0xFE00..0xFE9F`)
+
 ## Running the included tests
 
 Run the included tests with

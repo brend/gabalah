@@ -7,65 +7,69 @@ Last updated: 2026-04-06
 ### CPU
 - Full base instruction set decoded and executed via `opcode_map` (`HashMap<u8, Instruction>`)
 - CB-prefixed instructions (rotate/shift, BIT/RES/SET) via `execute_cb()`
-- All flag operations (Z, N, H, C) through the `Flags` trait on `u8`
-- 16-bit register pairs AF, BC, DE, HL with get/set helpers
+- 8-bit and 16-bit arithmetic/logic with flag handling
 - Stack operations: PUSH, POP, CALL, RET, RETI, RST
-- Conditional jumps and calls (JR cc, JP cc, CALL cc, RET cc)
-- High-memory addressing (LDH / 0xFF00+n)
-- `LD (nn), SP` (opcode `0x08`) — stores SP to a 16-bit memory address
-- IME (interrupt master enable): EI schedules activation after 1 instruction delay; DI clears immediately
-- HALT: suspends CPU until a pending interrupt wakes it; HALT bug (IME=0 + pending interrupt) stubbed
-- Post-boot DMG0 hardware state: CPU registers AF=`0x0100`, BC=`0xFF13`, DE=`0x00C1`, HL=`0x8403`, SP=`0xFFFE`; I/O registers TAC=`0xF8`, IF=`0xE1`, LCDC=`0x91`, BGP=`0xFC`, OBP0/1=`0xFF`; DIV counter=`0x183A`
-- Cycle counting: `step()` returns cycles consumed; `total_cycles` accumulates
-- 28 passing integration tests
+- Conditional control flow (JR cc, JP cc, CALL cc, RET cc)
+- IME handling with delayed EI activation
+- HALT wakeup on pending interrupt (HALT bug still stubbed)
+- Post-boot DMG0 register initialization
+
+### Memory / IO
+- ROM loaded at `0x0000`; PC starts at `0x0100`
+- ROM write-protection enabled after ROM load (`0x0000..0x7FFF` writes ignored)
+- Echo RAM mirroring (`0xE000..0xFDFF` <-> `0xC000..0xDDFF`)
+- Unusable area behavior (`0xFEA0..0xFEFF`: reads `0xFF`, writes ignored)
+- Joypad register (`0xFF00`) with group-select semantics
+- Timer registers (`DIV/TIMA/TMA/TAC`) with cycle-based ticking and overflow detection
+- DMA transfer (`0xFF46`) copies 160 bytes into OAM
+- Serial capture stub (`0xFF01/0xFF02`) with IF serial bit request
+- LY write reset (`0xFF44`) and STAT writable-bit masking (`0xFF41`)
+
+### Interrupts
+- IF/IE register flow wired into CPU dispatch
+- Interrupt vectors dispatched for bits 0..4 when `IME && (IF & IE) != 0`
+- VBlank interrupt requested at line 144
+- Timer interrupt requested on TIMA overflow
+- Joypad interrupt requested on newly pressed key
+- STAT mode/coincidence bits are updated, but STAT IRQ generation is currently disabled
 
 ### App / Display
 - winit event loop with `pixels` backend (160×144, scaled 3×)
-- `Emulator::step_frame()` drives the CPU for ~70,224 cycles per frame
-- Frame-rate limiter: targets ~59.7 fps (`FRAME_DURATION = 16,742,706 ns`)
-- LY (`0xFF44`) updated each frame based on cycle count (456 cycles/scanline)
-- Escape / window-close exits cleanly
-- Windows: DX12 avoided in favour of Vulkan/GL backend
+- Frame pacing near 59.7 FPS (`FRAME_DURATION` based on 70,224 cycles/frame)
+- Per-frame CPU stepping with LCD timing progression
+- Debug frame dump hotkey (`F9`) writes frame + LCD/VRAM/OAM artifacts to `debug_dumps/`
 
 ### PPU / Renderer
-- Background tile rendering: reads tile map (LCDC bit 3) and tile data (LCDC bit 4: signed `0x8800` or unsigned `0x8000` addressing)
-- SCX/SCY scroll registers respected
-- BGP palette register (`0xFF47`) decoded to 4-shade Game Boy colour palette
-- `renderer::render_frame()` wired to `Emulator::draw()` — real frame output replaces the solid placeholder
-- 4 renderer unit tests (zeroed VRAM, 2bpp decode, SCX scroll, SCY scroll, unsigned tile addressing)
+- Background renderer with SCX/SCY scroll
+- Window renderer with WX/WY and `WX-7` positioning behavior
+- OBJ renderer (8×8 baseline) with transparency and OBP0 mapping
+- LCDC gating:
+  - LCD off (`bit 7 = 0`) renders blank frame
+  - BG/Window master gate (`bit 0`) controls BG+Window drawing
+  - OBJ enable (`bit 1`) controls sprite drawing
+- Tile addressing supports both signed (`0x8800` region) and unsigned (`0x8000`) modes
 
-## Known Bugs / Gaps
+## Known Gaps
 
-### Critical (blocks real ROMs)
-- ~~**ROM loads at `0x0100` instead of `0x0000`**~~ — fixed. ROM now loads at `0x0000`; PC still initialises to `0x0100` (correct post-boot handoff point).
-- **No cartridge abstraction** — `Ram::load_rom()` copies bytes directly into the flat array with no MBC (Memory Bank Controller) support. Even simple ROMs with only a ROM-only mapper need the header parsed.
+### PPU accuracy
+- OBJ attributes not implemented yet (priority, X/Y flip, OBP1 selection)
+- 8×16 sprite mode not implemented
+- STAT interrupt generation disabled pending tighter timing accuracy
+- No per-scanline register latching/render pipeline (mid-scanline effects not emulated)
 
-### Hardware not yet implemented
-- **PPU (Pixel Processing Unit)** — Background layer renders; window and sprite layers not yet implemented. STAT register, mode transitions, and VBLANK interrupt not yet connected.
-- **Interrupt system** — IF (`0xFF0F`) and IE (`0xFFFF`) registers are plain memory bytes. No interrupt dispatch pipeline. VBLANK, Timer, Joypad interrupts not fired.
-- **HALT bug** — when IME=0 and an interrupt is already pending, the next byte should be read twice. Currently a stub (execution continues normally).
-- **STOP** — currently a no-op.
-- **Joypad** — no input mapped to `0xFF00`.
-- **Serial port** — not implemented (`0xFF01`/`0xFF02`).
-- **Audio (APU)** — not started.
-
-### Minor / polish
-- ~~`sp` initialises to `0x0000` instead of the correct post-boot value of `0xFFFE`.~~ — fixed.
-- ~~`LD (nn), SP` not implemented.~~ — fixed.
-- `err.rs` contains dead code — will be cleaned up.
-- LCDC bit 7 (BG/Window master enable) not yet checked in renderer.
+### Cartridge / hardware
+- No cartridge abstraction (MBC1/MBC3/MBC5 not implemented)
+- No save RAM persistence (`.sav`)
+- STOP remains a no-op
+- HALT bug behavior not fully implemented
+- Audio (APU) not implemented
 
 ## Test Coverage
 
 | Area | Tests | Status |
 |---|---|---|
-| Arithmetic (ADD, SUB, ADC, SBC) | ✓ | passing |
-| Logical (AND, OR, XOR, CP) | ✓ | passing |
-| Loads (LD, LDH, LD (HL±), LDHL) | ✓ | passing |
-| Jumps (JR, JP, JRC) | ✓ | passing |
-| Stack (PUSH, POP, CALL, RET, RST) | ✓ | passing |
-| CB-prefix (rotate, shift, BIT, RES, SET) | ✓ | passing |
-| Flags (SCF, CCF, CPL, DAA) | ✓ | passing |
-| PPU (BG renderer) | ✓ | passing |
-| Interrupts | — | not started |
-| Timer | — | not started |
+| CPU core ops | 28 (`tests/ops.rs`) | passing |
+| Memory/IO/timer/joypad/DMA | 23 (`tests/cpu.rs`) | passing |
+| Renderer (BG/window/OBJ baseline) | 10 (`src/renderer.rs`) | passing |
+| Interrupt conformance ROMs | partial/manual | in progress |
+| PPU conformance ROMs | partial/manual | in progress |
