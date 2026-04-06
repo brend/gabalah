@@ -13,7 +13,11 @@ Check off items as they are done and update `STATUS.md` accordingly.
 - [x] Run ~70,224 CPU cycles per frame
 - [x] Fix ROM load address: load at `0x0000`, set PC to `0x0100`
 - [x] Fix SP initial value: `0xFFFE`
-- [x] Initialise hardware registers to post-boot DMG values (AF=0x01B0, BC=0x0013, DE=0x00D8, HL=0x014D, SP=0xFFFE, PC=0x0100)
+- [x] Initialise hardware registers to post-boot DMG0 values
+  - CPU: AF=0x01B0, BC=0x0013, DE=0x00D8, HL=0x014D, SP=0xFFFE, PC=0x0100
+  - Timer: div_counter=0x183A (DIV=0x18), TIMA=0x00, TMA=0x00, TAC=0xF8
+  - Interrupts: IF=0xE1
+  - PPU: LCDC=0x91, BGP=0xFC, OBP0=0xFF, OBP1=0xFF
 - [ ] Parse cartridge header (title, cartridge type, ROM/RAM size)
 - [ ] Implement ROM-only mapper (type `0x00`) — simplest case, no banking
 - [x] Add frame-rate limiter (~59.7 fps)

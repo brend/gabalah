@@ -133,10 +133,11 @@ mod tests {
     #[test]
     fn div_increments_every_256_cycles() {
         let mut ram = Ram::new();
+        let initial = ram.read_byte(Addr(0xFF04));
         ram.tick(256);
-        assert_eq!(ram.read_byte(Addr(0xFF04)), 1);
+        assert_eq!(ram.read_byte(Addr(0xFF04)), initial.wrapping_add(1));
         ram.tick(256);
-        assert_eq!(ram.read_byte(Addr(0xFF04)), 2);
+        assert_eq!(ram.read_byte(Addr(0xFF04)), initial.wrapping_add(2));
     }
 
     #[test]

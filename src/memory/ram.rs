@@ -128,16 +128,23 @@ pub struct Ram {
 }
 
 impl Ram {
-    /// Returns an instance of zeroed Ram
+    /// Returns an instance of Ram with post-boot DMG0 hardware register state
     pub fn new() -> Ram {
-        Ram {
+        let mut ram = Ram {
             cells: [0; RAM_SIZE],
-            joypad_select: 0x30, // neither group selected initially
+            joypad_select: 0x30,
             action_buttons: 0,
             direction_buttons: 0,
             div_counter: 0x183A,
             tima_counter: 0,
-        }
+        };
+        ram.cells[0xFF07] = 0xF8; // TAC: upper bits set, timer disabled
+        ram.cells[0xFF0F] = 0xE1; // IF: VBlank + upper unused bits set
+        ram.cells[0xFF40] = 0x91; // LCDC: display on, BG enabled, unsigned tile data
+        ram.cells[0xFF47] = 0xFC; // BGP: shades 3,3,2,0
+        ram.cells[0xFF48] = 0xFF; // OBP0
+        ram.cells[0xFF49] = 0xFF; // OBP1
+        ram
     }
 
     /// Loads a ROM into memory
