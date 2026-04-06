@@ -142,6 +142,14 @@ pub fn run_loop(cpu: Cpu) -> Result<(), Error> {
     res.map_err(|e| Error::UserDefined(Box::new(e)))
 }
 
+pub fn run_headless(cpu: Cpu, frames: usize) -> Vec<u8> {
+    let mut emulator = Emulator::new(cpu);
+    for _ in 0..frames {
+        emulator.step_frame();
+    }
+    emulator.cpu.memory.serial_output.clone()
+}
+
 fn log_error<E: std::error::Error + 'static>(method_name: &str, err: E) {
     error!("{method_name}() failed: {err}");
     for source in err.sources().skip(1) {

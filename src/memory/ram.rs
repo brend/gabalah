@@ -125,6 +125,8 @@ pub struct Ram {
     div_counter: u32,
     /// Accumulated cycles since last TIMA increment
     tima_counter: u32,
+    /// Bytes captured from serial transfers (0xFF01 at each 0xFF02 write with bit 7 set)
+    pub serial_output: Vec<u8>,
 }
 
 impl Ram {
@@ -137,6 +139,7 @@ impl Ram {
             direction_buttons: 0,
             div_counter: 0x183A,
             tima_counter: 0,
+            serial_output: Vec::new(),
         };
         ram.cells[0xFF07] = 0xF8; // TAC: upper bits set, timer disabled
         ram.cells[0xFF0F] = 0xE1; // IF: VBlank + upper unused bits set
@@ -165,6 +168,12 @@ impl Ram {
         if address.0 == 0xFF04 {
             self.div_counter = 0;
             self.cells[0xFF04] = 0;
+            return;
+        }
+        if address.0 == 0xFF02 && value & 0x81 == 0x81 {
+            self.serial_output.push(self.cells[0xFF01]);
+            self.cells[0xFF02] = value & 0x7F;
+            self.cells[0xFF0F] |= 0x08;
             return;
         }
         if address.0 == 0xFF46 {
