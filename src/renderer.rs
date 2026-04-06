@@ -16,7 +16,19 @@ const GB_COLORS: [[u8; 4]; 4] = [
 /// `ram` must be a 65536-byte slice (the full Game Boy address space).
 /// Reads SCX/SCY scroll registers and respects LCDC tile map / data area bits.
 pub fn render_frame(ram: &[u8], screen: &mut [u8]) {
-    render_bg(ram, screen);
+    let lcdc = ram[0xFF40];
+    if (lcdc & 0x80) == 0 {
+        for pixel in screen.chunks_exact_mut(4) {
+            pixel.copy_from_slice(&GB_COLORS[0]);
+        }
+        return;
+    }
+
+    // On DMG, LCDC bit 0 gates both BG and Window.
+    if (lcdc & 0x01) != 0 {
+        render_bg(ram, screen);
+        render_window(ram, screen);
+    }
     render_obj(ram, screen);
 }
 
@@ -72,6 +84,21 @@ fn render_obj(ram: &[u8], screen: &mut [u8]) {
     }
 }
 
+fn tile_address(tile_index: u8, signed_addressing: bool) -> usize {
+    if signed_addressing {
+        (0x9000i32 + (tile_index as i8 as i32 * 16)) as usize
+    } else {
+        0x8000 + tile_index as usize * 16
+    }
+}
+
+fn tile_palette_index(ram: &[u8], tile_address: usize, pixel_x: usize, pixel_y: usize) -> u8 {
+    let lo = ram[tile_address + pixel_y * 2];
+    let hi = ram[tile_address + pixel_y * 2 + 1];
+    let bit = 7 - pixel_x;
+    ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1)
+}
+
 fn render_bg(ram: &[u8], screen: &mut [u8]) {
     let lcdc = ram[0xFF40];
     let bgp = ram[0xFF47];
@@ -92,18 +119,51 @@ fn render_bg(ram: &[u8], screen: &mut [u8]) {
             let tile_row = bg_y / 8;
             let tile_index = ram[tile_map_base + tile_row * 32 + tile_col];
 
-            let tile_address = if signed_addressing {
-                (0x9000i32 + (tile_index as i8 as i32 * 16)) as usize
-            } else {
-                0x8000 + tile_index as usize * 16
-            };
+            let tile_address = tile_address(tile_index, signed_addressing);
 
             let pixel_x = bg_x % 8;
             let pixel_y = bg_y % 8;
-            let lo = ram[tile_address + pixel_y * 2];
-            let hi = ram[tile_address + pixel_y * 2 + 1];
-            let bit = 7 - pixel_x;
-            let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+            let palette_index = tile_palette_index(ram, tile_address, pixel_x, pixel_y);
+            let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
+
+            let offset = (screen_y * WIDTH as usize + screen_x) * 4;
+            screen[offset..offset + 4].copy_from_slice(&GB_COLORS[shade]);
+        }
+    }
+}
+
+fn render_window(ram: &[u8], screen: &mut [u8]) {
+    let lcdc = ram[0xFF40];
+    if (lcdc & 0x20) == 0 {
+        return;
+    }
+
+    let bgp = ram[0xFF47];
+    let wy = ram[0xFF4A] as usize;
+    let wx = ram[0xFF4B] as usize;
+    if wy >= HEIGHT as usize {
+        return;
+    }
+
+    // LCDC bit 6: Window tile map area (0=0x9800, 1=0x9C00)
+    let tile_map_base: usize = if (lcdc & 0x40) != 0 { 0x9C00 } else { 0x9800 };
+    // LCDC bit 4: BG & Window tile data area (0=0x8800 signed, 1=0x8000 unsigned)
+    let signed_addressing = (lcdc & 0x10) == 0;
+
+    for screen_y in wy..HEIGHT as usize {
+        let win_y = screen_y - wy;
+        for screen_x in 0..WIDTH as usize {
+            if screen_x + 7 < wx {
+                continue;
+            }
+            let win_x = screen_x + 7 - wx;
+            let tile_col = win_x / 8;
+            let tile_row = win_y / 8;
+            let tile_index = ram[tile_map_base + tile_row * 32 + tile_col];
+            let tile_address = tile_address(tile_index, signed_addressing);
+            let pixel_x = win_x % 8;
+            let pixel_y = win_y % 8;
+            let palette_index = tile_palette_index(ram, tile_address, pixel_x, pixel_y);
             let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
 
             let offset = (screen_y * WIDTH as usize + screen_x) * 4;
@@ -160,6 +220,7 @@ mod tests {
         // Pixel bit 5: lo=1, hi=0 → palette 1
         // Pixel bit 4: lo=0, hi=0 → palette 0
         let mut ram = blank_ram();
+        ram[0xFF40] = 0x81; // LCDC: display on, BG enabled, signed tile data
         ram[0xFF47] = 0xE4; // BGP: identity mapping (3→3, 2→2, 1→1, 0→0)
         write_tile(
             &mut ram,
@@ -188,6 +249,7 @@ mod tests {
         // Put a solid palette-3 tile at BG map col 1 (tile index 1 in map).
         // Set SCX=8 so BG col 1 appears at screen x=0.
         let mut ram = blank_ram();
+        ram[0xFF40] = 0x81; // LCDC: display on, BG enabled, signed tile data
         ram[0xFF47] = 0xE4; // BGP: identity mapping
         ram[0xFF43] = 8; // SCX
         ram[0x9801] = 1; // tile map col 1 → tile index 1
@@ -218,6 +280,7 @@ mod tests {
         // Solid palette-3 tile at BG map row 1 (tile index 1 in map).
         // Set SCY=8 so BG row 1 appears at screen y=0.
         let mut ram = blank_ram();
+        ram[0xFF40] = 0x81; // LCDC: display on, BG enabled, signed tile data
         ram[0xFF47] = 0xE4; // BGP: identity mapping
         ram[0xFF42] = 8; // SCY
         ram[0x9820] = 1; // tile map row 1 col 0 → tile index 1
@@ -242,6 +305,38 @@ mod tests {
         }
     }
 
+    // --- Window rendering ---
+
+    #[test]
+    fn window_disabled_leaves_background_unchanged() {
+        let mut ram = blank_ram();
+        ram[0xFF47] = 0xE4; // BGP: identity mapping
+        ram[0xFF40] = 0x99; // LCDC: display on, BG on, BG map=0x9C00, unsigned tile data, window off
+        ram[0xFF4A] = 0; // WY
+        ram[0xFF4B] = 7; // WX: window origin x=0 if enabled
+        ram[0x9800] = 1; // window map tile index (would be visible if window were enabled)
+        write_tile(&mut ram, 0x8010, [(0xFF, 0xFF); 8]); // tile 1: shade 3
+        let mut screen = blank_screen();
+        render_frame(&ram, &mut screen);
+        assert_eq!(pixel(&screen, 0, 0), GB_COLORS[0], "window-off must not overwrite BG");
+    }
+
+    #[test]
+    fn window_uses_wx_minus_7_and_wy() {
+        let mut ram = blank_ram();
+        ram[0xFF47] = 0xE4; // BGP: identity mapping
+        ram[0xFF40] = 0xB9; // LCDC: display on, BG on, window on, BG map=0x9C00, unsigned tile data
+        ram[0xFF4A] = 5; // WY: window starts at y=5
+        ram[0xFF4B] = 15; // WX: window starts at x=8 (WX-7)
+        ram[0x9800] = 1; // window map tile 0 -> tile index 1
+        write_tile(&mut ram, 0x8010, [(0xFF, 0xFF); 8]); // tile 1: shade 3
+        let mut screen = blank_screen();
+        render_frame(&ram, &mut screen);
+        assert_eq!(pixel(&screen, 7, 5), GB_COLORS[0], "left of window edge must stay BG");
+        assert_eq!(pixel(&screen, 8, 4), GB_COLORS[0], "above WY must stay BG");
+        assert_eq!(pixel(&screen, 8, 5), GB_COLORS[3], "window should appear at WX-7,WY");
+    }
+
     // --- Sprite (OBJ) rendering ---
 
     #[test]
@@ -249,7 +344,7 @@ mod tests {
         // LCDC bit 1 clear: sprites must not appear even if OAM has valid data.
         let mut ram = blank_ram();
         ram[0xFF47] = 0xE4; // BGP: identity
-        ram[0xFF40] = 0x21; // LCDC: BG on, window on, OBJ off (bit 1 = 0)
+        ram[0xFF40] = 0xA1; // LCDC: display on, BG on, window on, OBJ off (bit 1 = 0)
         ram[0xFF48] = 0xE4; // OBP0: identity
         // Place a solid sprite tile at VRAM index 1
         write_tile(
@@ -271,7 +366,7 @@ mod tests {
     fn sprite_appears_at_oam_position() {
         // OAM Y=24 → screen y=8, OAM X=16 → screen x=8.
         let mut ram = blank_ram();
-        ram[0xFF40] = 0x13; // LCDC: BG on, OBJ on (bit 1), unsigned tile data (bit 4)
+        ram[0xFF40] = 0x93; // LCDC: display on, BG on, OBJ on (bit 1), unsigned tile data (bit 4)
         ram[0xFF47] = 0xE4; // BGP: identity (background stays shade 0)
         ram[0xFF48] = 0xE4; // OBP0: identity
         // Sprite tile 1 at 0x8010: all pixels palette index 3
@@ -290,7 +385,7 @@ mod tests {
         // A tile with all-zero data → every pixel is palette index 0 → transparent.
         // The background (shade 0) must show through.
         let mut ram = blank_ram();
-        ram[0xFF40] = 0x13; // LCDC: BG on, OBJ on, unsigned addressing
+        ram[0xFF40] = 0x93; // LCDC: display on, BG on, OBJ on, unsigned addressing
         ram[0xFF47] = 0xE4;
         ram[0xFF48] = 0xE4;
         // Tile 1 all zeroes (already the case in blank_ram)
@@ -308,7 +403,7 @@ mod tests {
         // Tile index 1 → 0x8010.
         let mut ram = blank_ram();
         ram[0xFF47] = 0xE4; // BGP: identity mapping
-        ram[0xFF40] = 0x10; // LCDC bit 4
+        ram[0xFF40] = 0x91; // LCDC: display on, BG on, bit 4 set
         ram[0x9800] = 1; // tile map slot 0 → tile index 1
         write_tile(
             &mut ram,

@@ -115,6 +115,7 @@ pub struct Addr(pub u16);
 #[derive(Debug)]
 pub struct Ram {
     cells: [u8; RAM_SIZE],
+    rom_loaded: bool,
     /// Bits 4-5 of the last write to 0xFF00: selects which button group to read
     joypad_select: u8,
     /// Active-high bitmask of pressed action buttons (bit 0=A, 1=B, 2=Select, 3=Start)
@@ -134,6 +135,7 @@ impl Ram {
     pub fn new() -> Ram {
         let mut ram = Ram {
             cells: [0; RAM_SIZE],
+            rom_loaded: false,
             joypad_select: 0x30,
             action_buttons: 0,
             direction_buttons: 0,
@@ -144,6 +146,7 @@ impl Ram {
         ram.cells[0xFF07] = 0xF8; // TAC: upper bits set, timer disabled
         ram.cells[0xFF0F] = 0xE1; // IF: VBlank + upper unused bits set
         ram.cells[0xFF40] = 0x91; // LCDC: display on, BG enabled, unsigned tile data
+        ram.cells[0xFF41] = 0x80; // STAT: upper bit set, mode/coincidence initialized to 0
         ram.cells[0xFF47] = 0xFC; // BGP: shades 3,3,2,0
         ram.cells[0xFF48] = 0xFF; // OBP0
         ram.cells[0xFF49] = 0xFF; // OBP1
@@ -157,10 +160,12 @@ impl Ram {
         for (i, byte) in rom.iter().enumerate() {
             self.cells[base_addr + i] = *byte;
         }
+        self.rom_loaded = true;
     }
 
     /// Sets the byte at the specified address to the specified value
     pub fn write_byte(&mut self, address: Addr, value: u8) {
+        let addr = address.0 as usize;
         if address.0 == 0xFF00 {
             self.joypad_select = value & 0x30;
             return;
@@ -182,7 +187,31 @@ impl Ram {
             self.cells[0xFE00..0xFE00 + 160].copy_from_slice(source_slice);
             return;
         }
-        self.cells[address.0 as usize] = value;
+        if address.0 == 0xFF41 {
+            // STAT: bits 0-2 are read-only (mode + coincidence), bits 3-6 writable, bit 7 always set.
+            let ro = self.cells[0xFF41] & 0x07;
+            self.cells[0xFF41] = 0x80 | (value & 0x78) | ro;
+            return;
+        }
+        if address.0 == 0xFF44 {
+            // LY resets to zero on write.
+            self.cells[0xFF44] = 0;
+            return;
+        }
+        // Cartridge ROM area. After a cartridge is loaded, writes are ignored.
+        if self.rom_loaded && addr <= 0x7FFF {
+            return;
+        }
+        // Echo RAM mirrors C000-DDFF.
+        if (0xE000..=0xFDFF).contains(&addr) {
+            self.cells[addr - 0x2000] = value;
+            return;
+        }
+        // Unusable memory area.
+        if (0xFEA0..=0xFEFF).contains(&addr) {
+            return;
+        }
+        self.cells[addr] = value;
     }
 
     /// Sets the word at the specified address to the specified value
@@ -193,6 +222,7 @@ impl Ram {
 
     /// Retrieves the byte at the specified address
     pub fn read_byte(&self, address: Addr) -> u8 {
+        let addr = address.0 as usize;
         if address.0 == 0xFF00 {
             let mut lo = 0x0Fu8; // all buttons not pressed (active low)
             if self.joypad_select & 0x20 == 0 {
@@ -206,7 +236,13 @@ impl Ram {
         if address.0 == 0xFF04 {
             return (self.div_counter >> 8) as u8;
         }
-        self.cells[address.0 as usize]
+        if (0xE000..=0xFDFF).contains(&addr) {
+            return self.cells[addr - 0x2000];
+        }
+        if (0xFEA0..=0xFEFF).contains(&addr) {
+            return 0xFF;
+        }
+        self.cells[addr]
     }
 
     /// Advances timer state by `cycles` CPU cycles. Returns true if TIMA overflowed.
@@ -250,5 +286,15 @@ impl Ram {
 
     pub fn as_slice(&self) -> &[u8] {
         &self.cells
+    }
+
+    /// Sets LY directly (used by PPU timing logic).
+    pub fn set_ly_raw(&mut self, ly: u8) {
+        self.cells[0xFF44] = ly;
+    }
+
+    /// Sets STAT directly (used by PPU timing logic).
+    pub fn set_stat_raw(&mut self, stat: u8) {
+        self.cells[0xFF41] = 0x80 | (stat & 0x7F);
     }
 }

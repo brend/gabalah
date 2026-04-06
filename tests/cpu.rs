@@ -199,4 +199,50 @@ mod tests {
             assert_eq!(ram.read_byte(Addr(0xFE00 + i as u16)), i, "OAM byte {i}");
         }
     }
+
+    // --- LCD IO semantics ---
+
+    #[test]
+    fn ly_write_resets_to_zero() {
+        let mut ram = Ram::new();
+        ram.write_byte(Addr(0xFF44), 0x77);
+        assert_eq!(ram.read_byte(Addr(0xFF44)), 0);
+    }
+
+    #[test]
+    fn stat_write_preserves_mode_and_coincidence_bits() {
+        let mut ram = Ram::new();
+        ram.set_stat_raw(0x87); // mode=3, coincidence=1
+        ram.write_byte(Addr(0xFF41), 0x00); // clear writable bits
+        let stat = ram.read_byte(Addr(0xFF41));
+        assert_eq!(stat & 0x80, 0x80, "STAT bit 7 should stay set");
+        assert_eq!(stat & 0x07, 0x07, "mode/coincidence bits should be preserved");
+    }
+
+    // --- Memory map behavior ---
+
+    #[test]
+    fn writes_to_rom_are_ignored() {
+        let mut ram = Ram::new();
+        ram.load_rom(vec![0u8; 32 * 1024]);
+        let before = ram.read_byte(Addr(0x1234));
+        ram.write_byte(Addr(0x1234), before.wrapping_add(1));
+        assert_eq!(ram.read_byte(Addr(0x1234)), before);
+    }
+
+    #[test]
+    fn echo_ram_reads_and_writes_map_to_work_ram() {
+        let mut ram = Ram::new();
+        ram.write_byte(Addr(0xC123), 0x42);
+        assert_eq!(ram.read_byte(Addr(0xE123)), 0x42);
+        ram.write_byte(Addr(0xE123), 0x99);
+        assert_eq!(ram.read_byte(Addr(0xC123)), 0x99);
+    }
+
+    #[test]
+    fn unusable_memory_reads_ff_and_ignores_writes() {
+        let mut ram = Ram::new();
+        ram.write_byte(Addr(0xFEA0), 0x12);
+        assert_eq!(ram.read_byte(Addr(0xFEA0)), 0xFF);
+    }
 }
