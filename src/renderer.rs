@@ -23,8 +23,8 @@ pub fn render_frame(ram: &[u8], screen: &mut [u8]) {
 fn render_obj(ram: &[u8], screen: &mut [u8]) {
     let lcdc = ram[0xFF40];
 
-    // LCDC bit 5: OBJ (sprite) enable
-    if (lcdc & 0x20) == 0 {
+    // LCDC bit 1: OBJ (sprite) enable
+    if (lcdc & 0x02) == 0 {
         return;
     }
 
@@ -246,10 +246,10 @@ mod tests {
 
     #[test]
     fn obj_disabled_leaves_background_unchanged() {
-        // LCDC bit 5 clear: sprites must not appear even if OAM has valid data.
+        // LCDC bit 1 clear: sprites must not appear even if OAM has valid data.
         let mut ram = blank_ram();
         ram[0xFF47] = 0xE4; // BGP: identity
-        ram[0xFF40] = 0x01; // LCDC: BG on, OBJ off (bit 5 = 0)
+        ram[0xFF40] = 0x21; // LCDC: BG on, window on, OBJ off (bit 1 = 0)
         ram[0xFF48] = 0xE4; // OBP0: identity
         // Place a solid sprite tile at VRAM index 1
         write_tile(
@@ -271,7 +271,7 @@ mod tests {
     fn sprite_appears_at_oam_position() {
         // OAM Y=24 → screen y=8, OAM X=16 → screen x=8.
         let mut ram = blank_ram();
-        ram[0xFF40] = 0x23; // LCDC: BG on, OBJ on (bit 5), unsigned tile data (bit 4)
+        ram[0xFF40] = 0x13; // LCDC: BG on, OBJ on (bit 1), unsigned tile data (bit 4)
         ram[0xFF47] = 0xE4; // BGP: identity (background stays shade 0)
         ram[0xFF48] = 0xE4; // OBP0: identity
         // Sprite tile 1 at 0x8010: all pixels palette index 3
@@ -290,7 +290,7 @@ mod tests {
         // A tile with all-zero data → every pixel is palette index 0 → transparent.
         // The background (shade 0) must show through.
         let mut ram = blank_ram();
-        ram[0xFF40] = 0x23; // LCDC: BG on, OBJ on, unsigned addressing
+        ram[0xFF40] = 0x13; // LCDC: BG on, OBJ on, unsigned addressing
         ram[0xFF47] = 0xE4;
         ram[0xFF48] = 0xE4;
         // Tile 1 all zeroes (already the case in blank_ram)
