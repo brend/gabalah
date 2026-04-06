@@ -2,10 +2,11 @@
 #![forbid(unsafe_code)]
 
 use super::renderer;
+use crate::config;
 use crate::cpu::Cpu;
 use crate::memory::Addr;
-use crate::ui::{self, GraphicsBackendKind};
-use log::{debug, error};
+use crate::ui::{self, GraphicsBackendKind, GraphicsOptions};
+use log::{debug, error, warn};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
@@ -27,7 +28,11 @@ const SCALE: f64 = 3.0;
 const CYCLES_PER_FRAME: usize = 70224;
 const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706); // 70224 / 4_194_304 s
 
-pub fn run_loop(cpu: Cpu) -> ui::UiResult<()> {
+pub fn run_loop(
+    cpu: Cpu,
+    backend_kind: GraphicsBackendKind,
+    backend_options: GraphicsOptions,
+) -> ui::UiResult<()> {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
     let mut input = WinitInputHelper::new();
@@ -43,7 +48,8 @@ pub fn run_loop(cpu: Cpu) -> ui::UiResult<()> {
             .unwrap()
     };
 
-    let mut graphics = ui::create_backend(GraphicsBackendKind::Pixels, WIDTH, HEIGHT, &window)?;
+    let mut graphics = ui::create_backend(backend_kind, WIDTH, HEIGHT, &window, backend_options)?;
+    debug!("Using graphics backend '{}'", backend_kind.as_str());
 
     let mut emulator = Emulator::new(cpu);
     let mut last_frame = Instant::now();
@@ -106,6 +112,29 @@ pub fn run_loop(cpu: Cpu) -> ui::UiResult<()> {
             if input.key_pressed(KeyCode::F9) {
                 emulator.request_dump();
                 window.request_redraw();
+            }
+            if input.key_pressed(KeyCode::KeyR) {
+                match config::load_graphics_settings() {
+                    Ok((configured_backend, configured_options)) => {
+                        if configured_backend != backend_kind {
+                            warn!(
+                                "config reload ignored backend change: running='{}' configured='{}'",
+                                backend_kind.as_str(),
+                                configured_backend.as_str()
+                            );
+                        }
+                        if let Err(err) = graphics.reload_options(configured_options) {
+                            log_error("graphics.reload_options", err.as_ref());
+                            elwt.exit();
+                            return;
+                        }
+                        debug!("Reloaded graphics options from config.json");
+                        window.request_redraw();
+                    }
+                    Err(err) => {
+                        log_error("config.load_graphics_settings", err.as_ref());
+                    }
+                }
             }
 
             // Resize the window

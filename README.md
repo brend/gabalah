@@ -18,6 +18,27 @@ Gabalah expects a path to a ROM file as its single command line argument.
 $ cargo run path/to/some_rom.gb
 ```
 
+### Graphics Backend Configuration
+
+Gabalah reads optional graphics settings from `config.json` in the project root.
+
+```json
+{
+  "graphics_backend": "wgpu_shader",
+  "shader": {
+    "scanline_strength": 0.22,
+    "curvature": 0.10
+  }
+}
+```
+
+Supported values for `"graphics_backend"`:
+
+- `"pixels"`: existing `pixels` presentation path
+- `"wgpu_shader"`: WGSL shader-based backend (scanline + CRT curvature pass)
+
+Press `R` while running to reload shader settings from `config.json` without restarting.
+
 ### Controls
 
 - D-Pad: Arrow keys
@@ -25,6 +46,7 @@ $ cargo run path/to/some_rom.gb
 - B: `X`
 - Select: Right Shift
 - Start: Enter
+- Reload graphics config: `R`
 - Debug frame dump: `F9`
 
 ### Debug Frame Dumps
