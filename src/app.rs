@@ -171,6 +171,10 @@ impl Emulator {
                 self.cpu.set_if(self.cpu.get_if() | 0x01);
             }
 
+            if self.cpu.memory.tick(cycles as u32) {
+                self.cpu.set_if(self.cpu.get_if() | 0x04);
+            }
+
             if self.is_interrupt_pending() {
                 self.interrupt()
             }

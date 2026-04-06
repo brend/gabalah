@@ -121,6 +121,10 @@ pub struct Ram {
     pub action_buttons: u8,
     /// Active-high bitmask of pressed direction buttons (bit 0=Right, 1=Left, 2=Up, 3=Down)
     pub direction_buttons: u8,
+    /// Internal 16-bit counter backing DIV (0xFF04); DIV register = high byte
+    div_counter: u32,
+    /// Accumulated cycles since last TIMA increment
+    tima_counter: u32,
 }
 
 impl Ram {
@@ -131,6 +135,8 @@ impl Ram {
             joypad_select: 0x30, // neither group selected initially
             action_buttons: 0,
             direction_buttons: 0,
+            div_counter: 0,
+            tima_counter: 0,
         }
     }
 
@@ -147,6 +153,11 @@ impl Ram {
     pub fn write_byte(&mut self, address: Addr, value: u8) {
         if address.0 == 0xFF00 {
             self.joypad_select = value & 0x30;
+            return;
+        }
+        if address.0 == 0xFF04 {
+            self.div_counter = 0;
+            self.cells[0xFF04] = 0;
             return;
         }
         if address.0 == 0xFF46 {
@@ -177,7 +188,42 @@ impl Ram {
             }
             return 0xC0 | (self.joypad_select & 0x30) | (lo & 0x0F);
         }
+        if address.0 == 0xFF04 {
+            return (self.div_counter >> 8) as u8;
+        }
         self.cells[address.0 as usize]
+    }
+
+    /// Advances timer state by `cycles` CPU cycles. Returns true if TIMA overflowed.
+    pub fn tick(&mut self, cycles: u32) -> bool {
+        self.div_counter = self.div_counter.wrapping_add(cycles);
+        self.cells[0xFF04] = (self.div_counter >> 8) as u8;
+
+        let tac = self.cells[0xFF07];
+        if tac & 0x04 == 0 {
+            return false;
+        }
+
+        let threshold = match tac & 0x03 {
+            0 => 1024u32,
+            1 => 16,
+            2 => 64,
+            _ => 256,
+        };
+
+        self.tima_counter += cycles;
+        let mut overflow = false;
+        while self.tima_counter >= threshold {
+            self.tima_counter -= threshold;
+            let tima = self.cells[0xFF05];
+            if tima == 0xFF {
+                self.cells[0xFF05] = self.cells[0xFF06];
+                overflow = true;
+            } else {
+                self.cells[0xFF05] = tima + 1;
+            }
+        }
+        overflow
     }
 
     pub fn read_word(&self, address: Addr) -> u16 {

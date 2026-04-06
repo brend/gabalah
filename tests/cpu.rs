@@ -127,4 +127,75 @@ mod tests {
         let result = ram.read_byte(Addr(0xFF00));
         assert_eq!(result & 0xC0, 0xC0, "bits 6-7 must always read as 1");
     }
+
+    // --- Timer ---
+
+    #[test]
+    fn div_increments_every_256_cycles() {
+        let mut ram = Ram::new();
+        ram.tick(256);
+        assert_eq!(ram.read_byte(Addr(0xFF04)), 1);
+        ram.tick(256);
+        assert_eq!(ram.read_byte(Addr(0xFF04)), 2);
+    }
+
+    #[test]
+    fn div_write_resets_to_zero() {
+        let mut ram = Ram::new();
+        ram.tick(512); // DIV = 2
+        ram.write_byte(Addr(0xFF04), 0xFF); // any write resets
+        assert_eq!(ram.read_byte(Addr(0xFF04)), 0);
+    }
+
+    #[test]
+    fn tima_stays_zero_when_timer_disabled() {
+        let mut ram = Ram::new();
+        ram.write_byte(Addr(0xFF07), 0x00); // TAC: timer disabled
+        let overflow = ram.tick(100_000);
+        assert!(!overflow);
+        assert_eq!(ram.read_byte(Addr(0xFF05)), 0);
+    }
+
+    #[test]
+    fn tima_increments_at_1024_cycle_rate() {
+        let mut ram = Ram::new();
+        ram.write_byte(Addr(0xFF07), 0x04); // TAC: enabled, clock select 00 (1024 cycles)
+        let overflow = ram.tick(1024);
+        assert!(!overflow);
+        assert_eq!(ram.read_byte(Addr(0xFF05)), 1);
+    }
+
+    #[test]
+    fn tima_overflow_reloads_from_tma_and_returns_true() {
+        let mut ram = Ram::new();
+        ram.write_byte(Addr(0xFF05), 0xFF); // TIMA at max
+        ram.write_byte(Addr(0xFF06), 0x42); // TMA reload value
+        ram.write_byte(Addr(0xFF07), 0x04); // TAC: enabled, 1024-cycle rate
+        let overflow = ram.tick(1024);
+        assert!(overflow);
+        assert_eq!(ram.read_byte(Addr(0xFF05)), 0x42);
+    }
+
+    #[test]
+    fn tima_no_overflow_returns_false() {
+        let mut ram = Ram::new();
+        ram.write_byte(Addr(0xFF07), 0x04); // TAC: enabled, 1024-cycle rate
+        let overflow = ram.tick(512); // not enough to increment
+        assert!(!overflow);
+    }
+
+    // --- OAM DMA ---
+
+    #[test]
+    fn dma_copies_160_bytes_to_oam() {
+        let mut ram = Ram::new();
+        // Write a recognisable pattern starting at 0xC000
+        for i in 0..160u8 {
+            ram.write_byte(Addr(0xC000 + i as u16), i);
+        }
+        ram.write_byte(Addr(0xFF46), 0xC0); // trigger DMA from 0xC000
+        for i in 0..160u8 {
+            assert_eq!(ram.read_byte(Addr(0xFE00 + i as u16)), i, "OAM byte {i}");
+        }
+    }
 }
