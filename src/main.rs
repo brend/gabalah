@@ -2,6 +2,7 @@ mod app;
 mod cpu;
 mod memory;
 mod renderer;
+mod ui;
 
 use cpu::Cpu;
 use std::env;
