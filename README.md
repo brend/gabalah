@@ -38,21 +38,27 @@ Gabalah reads optional graphics settings from `config.json` in the project root.
 Supported values for `"graphics_backend"`:
 
 - `"pixels"`: existing `pixels` presentation path
-- `"wgpu_shader"`: WGSL shader-based backend (scanline + CRT curvature + color modes)
+- `"wgpu_shader"`: WGSL runtime shader-library backend
 
 Supported values for `"shader.mode"`:
 
-- `"classic"`: original CRT-like look
-- `"prism"`: chromatic split + rainbow tinting
-- `"aurora"`: animated neon channel remap
-- `"palette_mutation"`: quantized-tone procedural palette remap (wildest mode)
+- `"classic"`
+- `"prism"`
+- `"aurora"`
+- `"palette_mutation"`
 
-`"shader.color_intensity"` controls how strong the non-classic color modes are (range `0.0..1.5`).
-For `palette_mutation`, a readable starting range is usually `0.65..0.95`.
+`"shader.mode"` and `"shader.color_intensity"` are passed as uniforms to the active shader.
+How they are interpreted depends on that shader file.
 
 Runtime WGSL shaders are loaded from `./shaders` (project root). Every file must provide
 `vs_main`/`fs_main` and the expected texture/sampler/uniform bindings.
 `"shader.active_file"` selects the preferred shader filename and is updated when cycling shaders.
+
+Bundled runtime shaders:
+
+- `crt.wgsl`: dedicated CRT pass (curvature + scanlines + phosphor/flicker)
+- `funk_spectrum.wgsl`: aggressive non-CRT color remap
+- `no_effect.wgsl`: passthrough (use this to effectively disable shader effects)
 
 Press `R` while running to reload shader settings from `config.json` and rescan `./shaders`
 without restarting.

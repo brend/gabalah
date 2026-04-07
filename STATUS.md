@@ -37,10 +37,13 @@ Last updated: 2026-04-07
 - winit event loop with pluggable graphics backends (160×144, scaled 3×)
 - `graphics_backend` selection via `config.json` (`pixels` or `wgpu_shader`)
 - `pixels` backend path retained behind the graphics abstraction
-- `wgpu_shader` backend with WGSL post-pass supporting `classic`, `prism`, `aurora`, and `palette_mutation` modes
+- `wgpu_shader` backend with runtime WGSL shader library loaded from `./shaders`
+- Bundled runtime shaders: `crt.wgsl` (CRT-only), `funk_spectrum.wgsl` (non-CRT color remix), `no_effect.wgsl` (passthrough)
+- Runtime shader cycling hotkeys: `Q` (previous), `E` (next)
+- Active shader persistence via `shader.active_file` in `config.json`
 - Frame pacing near 59.7 FPS (`FRAME_DURATION` based on 70,224 cycles/frame)
 - Per-frame CPU stepping with LCD timing progression
-- Runtime shader config hot-reload via `R` (re-reads shader fields like mode/intensity from `config.json`)
+- Runtime shader config hot-reload via `R` (re-reads shader fields and rescans `./shaders`)
 - Debug frame dump hotkey (`F9`) writes frame + LCD/VRAM/OAM artifacts to `debug_dumps/`
 
 ### PPU / Renderer
@@ -79,6 +82,6 @@ Last updated: 2026-04-07
 | Memory/IO/timer/joypad/DMA | 23 (`tests/cpu.rs`) | passing |
 | Renderer (BG/window/OBJ baseline) | 10 (`src/renderer.rs`) | passing |
 | Graphics config/backend parsing | 10 (`src/config.rs`, `src/ui/mod.rs`) | passing |
-| WGSL shader parse smoke test | 1 (`src/ui/wgpu_shader_backend.rs`) | passing |
+| WGSL shader contract/discovery tests | 5 (`src/ui/wgpu_shader_backend.rs`) | passing |
 | Interrupt conformance ROMs | partial/manual | in progress |
 | PPU conformance ROMs | partial/manual | in progress |

@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use winit::{
     dpi::LogicalSize,
     event::{Event, WindowEvent},
-    event_loop::EventLoop,
+    event_loop::{ControlFlow, EventLoop},
     keyboard::KeyCode,
     window::WindowBuilder,
 };
@@ -55,6 +55,8 @@ pub fn run_loop(
     let mut last_frame = Instant::now();
 
     let res = event_loop.run(|event, elwt| {
+        elwt.set_control_flow(ControlFlow::WaitUntil(last_frame + FRAME_DURATION));
+
         if let Event::WindowEvent {
             event: WindowEvent::RedrawRequested,
             ..
@@ -193,9 +195,13 @@ pub fn run_loop(
                 }
             }
 
-            if last_frame.elapsed() >= FRAME_DURATION {
+            let mut stepped = false;
+            while last_frame.elapsed() >= FRAME_DURATION {
                 last_frame += FRAME_DURATION;
                 emulator.step_frame();
+                stepped = true;
+            }
+            if stepped {
                 window.request_redraw();
             }
         }
