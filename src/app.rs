@@ -341,6 +341,7 @@ impl Emulator {
     }
 
     fn interrupt(&mut self) -> usize {
+        self.cpu.halted = false;
         self.cpu.registers.ime = false;
         let if_contents = self.cpu.get_if();
         let ie_contents = self.cpu.get_ie();
