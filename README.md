@@ -58,7 +58,9 @@ Bundled runtime shaders:
 
 - `crt.wgsl`: dedicated CRT pass (curvature + scanlines + phosphor/flicker)
 - `funk_spectrum.wgsl`: aggressive non-CRT color remap
+- `heart_pixels.wgsl`: renders each source pixel as a tiny heart shape
 - `no_effect.wgsl`: passthrough (use this to effectively disable shader effects)
+- `wiggle_ripple.wgsl`: per-pixel ripple displacement with a soft, pleasing wobble
 
 Press `R` while running to reload shader settings from `config.json` and rescan `./shaders`
 without restarting.
