@@ -68,7 +68,7 @@ pub fn inc8(value: u8, flags: &mut u8) -> u8 {
     flags.set_zero(result == 0);
     flags.set_subtraction(false);
     flags.set_half_carry((value & 0x0F) + 1 > 0x0F);
-    result.into()
+    result
 }
 
 pub fn inc16(value: u16) -> u16 {
@@ -135,7 +135,7 @@ pub fn sbc8(value1: u8, value2: u8, flags: &mut u8) -> u8 {
 
 pub fn rlc(value: u8, flags: &mut u8) -> u8 {
     let carry = value & 0x80 != 0;
-    let result = (value << 1) | (value >> 7);
+    let result = value.rotate_left(1);
     flags.set_zero(false);
     flags.set_subtraction(false);
     flags.set_half_carry(false);
@@ -145,7 +145,7 @@ pub fn rlc(value: u8, flags: &mut u8) -> u8 {
 
 pub fn rrc(value: u8, flags: &mut u8) -> u8 {
     let carry = value & 0x01 != 0;
-    let result = (value >> 1) | (value << 7);
+    let result = value.rotate_right(1);
     flags.set_zero(false);
     flags.set_subtraction(false);
     flags.set_half_carry(false);

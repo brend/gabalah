@@ -123,9 +123,7 @@ impl<'win> WgpuShaderBackend<'win> {
                 window.inner_size().width.max(1),
                 window.inner_size().height.max(1),
             )
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::Other, "Surface is not supported by adapter")
-            })?;
+            .ok_or_else(|| io::Error::other("Surface is not supported by adapter"))?;
         let capabilities = surface.get_capabilities(&adapter);
         if let Some(srgb_format) = capabilities
             .formats

@@ -19,6 +19,12 @@ pub struct Cpu {
     pub halted: bool,
 }
 
+impl Default for Cpu {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Cpu {
     /// Creates a new CPU
     pub fn new() -> Cpu {
@@ -188,19 +194,19 @@ impl Cpu {
                 let dst_byte = dst.read_byte(r, m);
                 let src_byte = src.read_byte(r, m);
                 let result = alu::and(dst_byte, src_byte, &mut r.f);
-                dst.write_byte(r, m, result.into());
+                dst.write_byte(r, m, result);
             }
             Xor(dst, src) => {
                 let dst_byte = dst.read_byte(r, m);
                 let src_byte = src.read_byte(r, m);
                 let result = alu::xor(dst_byte, src_byte, &mut r.f);
-                dst.write_byte(r, m, result.into());
+                dst.write_byte(r, m, result);
             }
             Or(dst, src) => {
                 let dst_byte = dst.read_byte(r, m);
                 let src_byte = src.read_byte(r, m);
                 let result = alu::or(dst_byte, src_byte, &mut r.f);
-                dst.write_byte(r, m, result.into());
+                dst.write_byte(r, m, result);
             }
             Cp(dst, src) => {
                 let dst_byte = dst.read_byte(r, m);

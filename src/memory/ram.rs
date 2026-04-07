@@ -111,6 +111,12 @@ pub fn lo(word: u16) -> u8 {
 #[derive(Copy, Clone, Debug)]
 pub struct Addr(pub u16);
 
+impl Default for Ram {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// The Game Boy's random-access memory
 #[derive(Debug)]
 pub struct Ram {
