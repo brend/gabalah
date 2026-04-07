@@ -113,6 +113,39 @@ pub fn run_loop(
                 emulator.request_dump();
                 window.request_redraw();
             }
+            if backend_kind == GraphicsBackendKind::WgpuShader && input.key_pressed(KeyCode::KeyE)
+            {
+                match graphics.cycle_shader_next() {
+                    Ok(active_shader_file) => {
+                        if let Err(err) = config::save_active_shader_file(active_shader_file.as_deref()) {
+                            warn!("Failed to persist active shader in config.json: {err}");
+                        }
+                        window.request_redraw();
+                    }
+                    Err(err) => {
+                        log_error("graphics.cycle_shader_next", err.as_ref());
+                        elwt.exit();
+                        return;
+                    }
+                }
+            }
+            if backend_kind == GraphicsBackendKind::WgpuShader
+                && input.key_pressed(KeyCode::KeyQ)
+            {
+                match graphics.cycle_shader_prev() {
+                    Ok(active_shader_file) => {
+                        if let Err(err) = config::save_active_shader_file(active_shader_file.as_deref()) {
+                            warn!("Failed to persist active shader in config.json: {err}");
+                        }
+                        window.request_redraw();
+                    }
+                    Err(err) => {
+                        log_error("graphics.cycle_shader_prev", err.as_ref());
+                        elwt.exit();
+                        return;
+                    }
+                }
+            }
             if input.key_pressed(KeyCode::KeyR) {
                 match config::load_graphics_settings() {
                     Ok((configured_backend, configured_options)) => {
@@ -123,10 +156,24 @@ pub fn run_loop(
                                 configured_backend.as_str()
                             );
                         }
+                        let preferred_active_file =
+                            configured_options.shader.active_file.clone();
                         if let Err(err) = graphics.reload_options(configured_options) {
                             log_error("graphics.reload_options", err.as_ref());
                             elwt.exit();
                             return;
+                        }
+                        match graphics.reload_shader_library(preferred_active_file.as_deref()) {
+                            Ok(active_shader_file) => {
+                                if let Err(err) = config::save_active_shader_file(active_shader_file.as_deref()) {
+                                    warn!("Failed to persist active shader in config.json: {err}");
+                                }
+                            }
+                            Err(err) => {
+                                log_error("graphics.reload_shader_library", err.as_ref());
+                                elwt.exit();
+                                return;
+                            }
                         }
                         debug!("Reloaded graphics options from config.json");
                         window.request_redraw();

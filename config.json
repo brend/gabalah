@@ -1,9 +1,10 @@
 {
   "graphics_backend": "wgpu_shader",
   "shader": {
-    "scanline_strength": 0.22,
+    "active_file": "no_effect.wgsl",
+    "color_intensity": 0.82,
     "curvature": 0.1,
     "mode": "palette_mutation",
-    "color_intensity": 0.82
+    "scanline_strength": 0.22
   }
 }

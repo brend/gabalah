@@ -29,7 +29,8 @@ Gabalah reads optional graphics settings from `config.json` in the project root.
     "scanline_strength": 0.22,
     "curvature": 0.10,
     "mode": "palette_mutation",
-    "color_intensity": 0.82
+    "color_intensity": 0.82,
+    "active_file": "crt.wgsl"
   }
 }
 ```
@@ -49,7 +50,12 @@ Supported values for `"shader.mode"`:
 `"shader.color_intensity"` controls how strong the non-classic color modes are (range `0.0..1.5`).
 For `palette_mutation`, a readable starting range is usually `0.65..0.95`.
 
-Press `R` while running to reload shader settings from `config.json` without restarting.
+Runtime WGSL shaders are loaded from `./shaders` (project root). Every file must provide
+`vs_main`/`fs_main` and the expected texture/sampler/uniform bindings.
+`"shader.active_file"` selects the preferred shader filename and is updated when cycling shaders.
+
+Press `R` while running to reload shader settings from `config.json` and rescan `./shaders`
+without restarting.
 Changing `"graphics_backend"` still requires restarting the app.
 
 ### Controls
@@ -60,6 +66,8 @@ Changing `"graphics_backend"` still requires restarting the app.
 - Select: Right Shift
 - Start: Enter
 - Reload graphics config: `R`
+- Previous shader: `Q`
+- Next shader: `E`
 - Debug frame dump: `F9`
 
 ### Debug Frame Dumps

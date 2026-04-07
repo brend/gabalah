@@ -16,6 +16,18 @@ pub trait GraphicsBackend {
     fn reload_options(&mut self, _options: GraphicsOptions) -> UiResult<()> {
         Ok(())
     }
+    fn cycle_shader_next(&mut self) -> UiResult<Option<String>> {
+        Ok(None)
+    }
+    fn cycle_shader_prev(&mut self) -> UiResult<Option<String>> {
+        Ok(None)
+    }
+    fn reload_shader_library(
+        &mut self,
+        _preferred_active_file: Option<&str>,
+    ) -> UiResult<Option<String>> {
+        Ok(None)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,21 +60,23 @@ impl FromStr for GraphicsBackendKind {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ShaderOptions {
     pub scanline_strength: f32,
     pub curvature: f32,
     pub color_intensity: f32,
     pub mode: ShaderColorMode,
+    pub active_file: Option<String>,
 }
 
 impl ShaderOptions {
-    pub fn clamped(self) -> Self {
+    pub fn clamped(&self) -> Self {
         Self {
             scanline_strength: self.scanline_strength.clamp(0.0, 1.0),
             curvature: self.curvature.clamp(0.0, 0.35),
             color_intensity: self.color_intensity.clamp(0.0, 1.5),
             mode: self.mode,
+            active_file: self.active_file.clone(),
         }
     }
 }
@@ -74,6 +88,7 @@ impl Default for ShaderOptions {
             curvature: 0.08,
             color_intensity: 0.65,
             mode: ShaderColorMode::Classic,
+            active_file: None,
         }
     }
 }
@@ -106,7 +121,7 @@ impl FromStr for ShaderColorMode {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct GraphicsOptions {
     pub shader: ShaderOptions,
 }
@@ -175,6 +190,7 @@ mod tests {
             curvature: 999.0,
             color_intensity: 9.0,
             mode: ShaderColorMode::Prism,
+            active_file: Some("foo.wgsl".to_string()),
         }
         .clamped();
 
@@ -182,6 +198,7 @@ mod tests {
         assert!((clamped.curvature - 0.35).abs() < f32::EPSILON);
         assert!((clamped.color_intensity - 1.5).abs() < f32::EPSILON);
         assert_eq!(clamped.mode, ShaderColorMode::Prism);
+        assert_eq!(clamped.active_file.as_deref(), Some("foo.wgsl"));
     }
 
     #[test]

@@ -1,9 +1,17 @@
 use super::{GraphicsBackend, GraphicsOptions, ShaderColorMode, ShaderOptions, UiResult};
+use log::{debug, warn};
+use naga::{AddressSpace, ImageClass, ScalarKind, ShaderStage, TypeInner};
+use std::ffi::OsStr;
+use std::fs;
 use std::io;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 use winit::window::Window;
 
-const SHADER_SOURCE: &str = include_str!("shaders/crt.wgsl");
+const BUILTIN_SHADER_SOURCE: &str = include_str!("shaders/crt.wgsl");
+const SHADER_DIRECTORY: &str = "shaders";
+const BUILTIN_SHADER_LABEL: &str = "builtin-crt";
+const REQUIRED_UNIFORM_FIELDS: usize = 8;
 
 #[derive(Debug, Clone, Copy)]
 struct ShaderUniforms {
@@ -32,6 +40,17 @@ impl ShaderUniforms {
     }
 }
 
+#[derive(Debug)]
+struct ShaderSource {
+    file_name: String,
+    source: String,
+}
+
+struct ShaderProgram {
+    file_name: Option<String>,
+    pipeline: wgpu::RenderPipeline,
+}
+
 impl ShaderColorMode {
     const fn as_uniform_value(self) -> f32 {
         match self {
@@ -54,7 +73,9 @@ pub struct WgpuShaderBackend<'win> {
     frame_texture: wgpu::Texture,
     uniform_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
-    pipeline: wgpu::RenderPipeline,
+    pipeline_layout: wgpu::PipelineLayout,
+    shader_programs: Vec<ShaderProgram>,
+    active_shader_index: usize,
     shader_options: ShaderOptions,
     start_time: Instant,
 }
@@ -206,40 +227,13 @@ impl<'win> WgpuShaderBackend<'win> {
             ],
         });
 
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("gabalah-crt-shader"),
-            source: wgpu::ShaderSource::Wgsl(SHADER_SOURCE.into()),
-        });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("gabalah-shader-pipeline-layout"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
-        let color_target = [Some(wgpu::ColorTargetState {
-            format: surface_config.format,
-            blend: Some(wgpu::BlendState::REPLACE),
-            write_mask: wgpu::ColorWrites::ALL,
-        })];
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("gabalah-shader-pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader_module,
-                entry_point: "vs_main",
-                buffers: &[],
-            },
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader_module,
-                entry_point: "fs_main",
-                targets: &color_target,
-            }),
-            multiview: None,
-        });
 
-        Ok(Self {
+        let mut backend = Self {
             width,
             height,
             frame: vec![0; (width * height * 4) as usize],
@@ -250,14 +244,178 @@ impl<'win> WgpuShaderBackend<'win> {
             frame_texture,
             uniform_buffer,
             bind_group,
-            pipeline,
+            pipeline_layout,
+            shader_programs: Vec::new(),
+            active_shader_index: 0,
             shader_options,
             start_time: Instant::now(),
-        })
+        };
+
+        let preferred_active_file = backend.shader_options.active_file.clone();
+        backend.reload_shader_library(preferred_active_file.as_deref())?;
+        Ok(backend)
     }
 
     fn reconfigure_surface(&self) {
         self.surface.configure(&self.device, &self.surface_config);
+    }
+
+    fn active_shader_file(&self) -> Option<&str> {
+        self.shader_programs
+            .get(self.active_shader_index)
+            .and_then(|program| program.file_name.as_deref())
+    }
+
+    fn active_pipeline(&self) -> &wgpu::RenderPipeline {
+        &self.shader_programs[self.active_shader_index].pipeline
+    }
+
+    fn cycle_shader(&mut self, step: isize) -> Option<String> {
+        if self.shader_programs.is_empty() {
+            return None;
+        }
+        let len = self.shader_programs.len() as isize;
+        let current = self.active_shader_index as isize;
+        self.active_shader_index = (current + step).rem_euclid(len) as usize;
+
+        let active = self.active_shader_file().map(str::to_string);
+        self.shader_options.active_file = active.clone();
+        active
+    }
+
+    fn set_active_shader_file(&mut self, file_name: &str) -> bool {
+        if let Some(index) = self
+            .shader_programs
+            .iter()
+            .position(|program| program.file_name.as_deref() == Some(file_name))
+        {
+            self.active_shader_index = index;
+            self.shader_options.active_file = Some(file_name.to_string());
+            return true;
+        }
+        false
+    }
+
+    fn compile_shader_program(
+        &self,
+        source: &str,
+        label: &str,
+        file_name: Option<String>,
+    ) -> UiResult<ShaderProgram> {
+        validate_shader_contract(source).map_err(|err| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("shader '{label}' violates required contract: {err}"),
+            )
+        })?;
+
+        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+
+        let shader_module = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(label),
+                source: wgpu::ShaderSource::Wgsl(source.into()),
+            });
+        let color_target = [Some(wgpu::ColorTargetState {
+            format: self.surface_config.format,
+            blend: Some(wgpu::BlendState::REPLACE),
+            write_mask: wgpu::ColorWrites::ALL,
+        })];
+        let pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("gabalah-shader-pipeline"),
+                layout: Some(&self.pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader_module,
+                    entry_point: "vs_main",
+                    buffers: &[],
+                },
+                primitive: wgpu::PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader_module,
+                    entry_point: "fs_main",
+                    targets: &color_target,
+                }),
+                multiview: None,
+            });
+
+        if let Some(err) = pollster::block_on(self.device.pop_error_scope()) {
+            return Err(Box::new(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("failed to compile shader '{label}': {err}"),
+            )));
+        }
+
+        Ok(ShaderProgram {
+            file_name,
+            pipeline,
+        })
+    }
+
+    fn reload_shader_programs(
+        &mut self,
+        preferred_active_file: Option<&str>,
+    ) -> UiResult<Option<String>> {
+        let previous_active = self.active_shader_file().map(str::to_string);
+
+        let shader_sources = load_runtime_shaders(Path::new(SHADER_DIRECTORY))?;
+        let mut shader_programs = Vec::new();
+
+        for shader_source in shader_sources {
+            match self.compile_shader_program(
+                &shader_source.source,
+                &shader_source.file_name,
+                Some(shader_source.file_name.clone()),
+            ) {
+                Ok(program) => shader_programs.push(program),
+                Err(err) => warn!("Skipping shader '{}': {err}", shader_source.file_name),
+            }
+        }
+
+        if shader_programs.is_empty() {
+            warn!(
+                "No valid runtime shaders found in '{}'; using built-in fallback",
+                SHADER_DIRECTORY
+            );
+            shader_programs.push(self.compile_shader_program(
+                BUILTIN_SHADER_SOURCE,
+                BUILTIN_SHADER_LABEL,
+                None,
+            )?);
+        }
+
+        let desired_active = preferred_active_file.or(previous_active.as_deref());
+        let mut active_index = 0;
+        if let Some(desired_active) = desired_active {
+            if let Some(index) = shader_programs
+                .iter()
+                .position(|program| program.file_name.as_deref() == Some(desired_active))
+            {
+                active_index = index;
+            } else {
+                warn!(
+                    "Requested active shader '{}' not available; falling back to first shader",
+                    desired_active
+                );
+            }
+        }
+
+        self.shader_programs = shader_programs;
+        self.active_shader_index = active_index;
+        let active = self.active_shader_file().map(str::to_string);
+        self.shader_options.active_file = active.clone();
+
+        if let Some(active_name) = active.as_deref() {
+            debug!("Active shader: {active_name}");
+        } else {
+            debug!("Active shader: built-in fallback");
+        }
+
+        Ok(active)
     }
 }
 
@@ -332,7 +490,7 @@ impl GraphicsBackend for WgpuShaderBackend<'_> {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(self.active_pipeline());
             pass.set_bind_group(0, &self.bind_group, &[]);
             pass.draw(0..3, 0..1);
         }
@@ -350,18 +508,254 @@ impl GraphicsBackend for WgpuShaderBackend<'_> {
 
     fn reload_options(&mut self, options: GraphicsOptions) -> UiResult<()> {
         self.shader_options = options.shader.clamped();
+        if let Some(ref active_file) = self.shader_options.active_file.clone() {
+            if !self.set_active_shader_file(active_file) {
+                warn!(
+                    "Configured active shader '{}' not present in loaded shader list",
+                    active_file
+                );
+            }
+        }
         Ok(())
     }
+
+    fn cycle_shader_next(&mut self) -> UiResult<Option<String>> {
+        Ok(self.cycle_shader(1))
+    }
+
+    fn cycle_shader_prev(&mut self) -> UiResult<Option<String>> {
+        Ok(self.cycle_shader(-1))
+    }
+
+    fn reload_shader_library(
+        &mut self,
+        preferred_active_file: Option<&str>,
+    ) -> UiResult<Option<String>> {
+        self.reload_shader_programs(preferred_active_file)
+    }
+}
+
+fn load_runtime_shaders(
+    shader_dir: &Path,
+) -> Result<Vec<ShaderSource>, Box<dyn std::error::Error>> {
+    let mut shaders = Vec::new();
+    for shader_path in discover_shader_files(shader_dir)? {
+        let source = fs::read_to_string(&shader_path)?;
+        let file_name = shader_path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Shader path '{}' is not valid UTF-8", shader_path.display()),
+                )
+            })?
+            .to_string();
+        shaders.push(ShaderSource { file_name, source });
+    }
+    Ok(shaders)
+}
+
+fn discover_shader_files(shader_dir: &Path) -> io::Result<Vec<PathBuf>> {
+    if !shader_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut files = Vec::new();
+    for entry in fs::read_dir(shader_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(ext) = path.extension().and_then(OsStr::to_str) else {
+            continue;
+        };
+        if ext.eq_ignore_ascii_case("wgsl") {
+            files.push(path);
+        }
+    }
+
+    files.sort_by(|left, right| {
+        left.file_name()
+            .unwrap_or_default()
+            .cmp(right.file_name().unwrap_or_default())
+    });
+    Ok(files)
+}
+
+fn validate_shader_contract(source: &str) -> Result<(), String> {
+    let module =
+        naga::front::wgsl::parse_str(source).map_err(|err| format!("invalid WGSL: {err}"))?;
+
+    let mut has_vs_main = false;
+    let mut has_fs_main = false;
+    for entry in &module.entry_points {
+        if entry.stage == ShaderStage::Vertex && entry.name == "vs_main" {
+            has_vs_main = true;
+        }
+        if entry.stage == ShaderStage::Fragment && entry.name == "fs_main" {
+            has_fs_main = true;
+        }
+    }
+    if !has_vs_main || !has_fs_main {
+        return Err(
+            "expected entry points `vs_main` (vertex) and `fs_main` (fragment)".to_string(),
+        );
+    }
+
+    let mut texture_ok = false;
+    let mut sampler_ok = false;
+    let mut uniform_ok = false;
+
+    for (_, global) in module.global_variables.iter() {
+        let Some(ref binding) = global.binding else {
+            continue;
+        };
+        if binding.group != 0 {
+            continue;
+        }
+
+        let ty = &module.types[global.ty].inner;
+        match binding.binding {
+            0 => {
+                if matches!(
+                    ty,
+                    TypeInner::Image {
+                        dim: naga::ImageDimension::D2,
+                        arrayed: false,
+                        class: ImageClass::Sampled {
+                            kind: ScalarKind::Float,
+                            multi: false,
+                        }
+                    }
+                ) {
+                    texture_ok = true;
+                }
+            }
+            1 => {
+                if matches!(ty, TypeInner::Sampler { comparison: false }) {
+                    sampler_ok = true;
+                }
+            }
+            2 => {
+                if global.space == AddressSpace::Uniform
+                    && uniform_struct_matches(&module, global.ty)
+                {
+                    uniform_ok = true;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !texture_ok {
+        return Err("missing binding @group(0) @binding(0) texture_2d<f32>".to_string());
+    }
+    if !sampler_ok {
+        return Err("missing binding @group(0) @binding(1) sampler".to_string());
+    }
+    if !uniform_ok {
+        return Err(
+            "missing binding @group(0) @binding(2) uniform struct with 8 f32 fields".to_string(),
+        );
+    }
+
+    Ok(())
+}
+
+fn uniform_struct_matches(module: &naga::Module, ty_handle: naga::Handle<naga::Type>) -> bool {
+    let TypeInner::Struct { members, .. } = &module.types[ty_handle].inner else {
+        return false;
+    };
+    if members.len() != REQUIRED_UNIFORM_FIELDS {
+        return false;
+    }
+    for member in members {
+        if !is_f32_scalar(module, member.ty) {
+            return false;
+        }
+    }
+    true
+}
+
+fn is_f32_scalar(module: &naga::Module, ty_handle: naga::Handle<naga::Type>) -> bool {
+    matches!(
+        module.types[ty_handle].inner,
+        TypeInner::Scalar(naga::Scalar {
+            kind: ScalarKind::Float,
+            width: 4,
+        })
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::SHADER_SOURCE;
+    use super::{discover_shader_files, validate_shader_contract, BUILTIN_SHADER_SOURCE};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::process;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn crt_wgsl_shader_parses() {
-        let module = naga::front::wgsl::parse_str(SHADER_SOURCE)
+        let module = naga::front::wgsl::parse_str(BUILTIN_SHADER_SOURCE)
             .expect("crt shader should parse as valid WGSL");
         assert!(!module.entry_points.is_empty());
+    }
+
+    #[test]
+    fn validates_builtin_shader_contract() {
+        validate_shader_contract(BUILTIN_SHADER_SOURCE)
+            .expect("builtin shader should satisfy runtime contract");
+    }
+
+    #[test]
+    fn rejects_shader_missing_entry_points() {
+        let broken = BUILTIN_SHADER_SOURCE.replace("fn vs_main", "fn vs_main_missing");
+        let err = validate_shader_contract(&broken)
+            .expect_err("shader without required entry points should fail");
+        assert!(err.contains("vs_main"));
+    }
+
+    #[test]
+    fn rejects_uniform_shape_mismatch() {
+        let broken = BUILTIN_SHADER_SOURCE.replace("_pad2: f32,", "_pad2: vec2<f32>,");
+        let err = validate_shader_contract(&broken)
+            .expect_err("shader with wrong uniform shape should fail");
+        assert!(err.contains("uniform"));
+    }
+
+    #[test]
+    fn discovers_wgsl_files_in_sorted_order() {
+        let dir = unique_temp_dir("shader_scan");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        fs::write(dir.join("b.wgsl"), "// b").expect("write should succeed");
+        fs::write(dir.join("a.wgsl"), "// a").expect("write should succeed");
+        fs::write(dir.join("ignore.txt"), "ignore").expect("write should succeed");
+
+        let files = discover_shader_files(&dir).expect("shader discovery should succeed");
+        let names: Vec<String> = files
+            .iter()
+            .map(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .expect("file name should be utf-8")
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(names, vec!["a.wgsl", "b.wgsl"]);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    fn unique_temp_dir(label: &str) -> PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be after unix epoch")
+            .as_nanos();
+        let mut path = std::env::temp_dir();
+        path.push(format!("gabalah_{label}_{}_{}", process::id(), timestamp));
+        path
     }
 }

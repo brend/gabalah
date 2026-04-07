@@ -1,5 +1,6 @@
 use crate::ui::{GraphicsBackendKind, GraphicsOptions, ShaderColorMode, ShaderOptions};
 use serde::Deserialize;
+use serde_json::{json, Value};
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -20,11 +21,18 @@ struct ShaderConfig {
     curvature: Option<f32>,
     color_intensity: Option<f32>,
     mode: Option<String>,
+    active_file: Option<String>,
 }
 
 pub fn load_graphics_settings(
 ) -> Result<(GraphicsBackendKind, GraphicsOptions), Box<dyn std::error::Error>> {
     load_graphics_settings_from_path(Path::new(CONFIG_FILE))
+}
+
+pub fn save_active_shader_file(
+    active_file: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    save_active_shader_file_to_path(Path::new(CONFIG_FILE), active_file)
 }
 
 fn load_graphics_settings_from_path(
@@ -64,6 +72,7 @@ fn load_graphics_settings_from_path(
             .color_intensity
             .unwrap_or(defaults.color_intensity),
         mode,
+        active_file: cfg.shader.active_file,
     }
     .clamped();
 
@@ -85,12 +94,67 @@ fn load_config(path: &Path) -> Result<AppConfig, Box<dyn std::error::Error>> {
     Ok(config)
 }
 
+fn save_active_shader_file_to_path(
+    path: &Path,
+    active_file: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut root = if path.exists() {
+        let contents = fs::read_to_string(path)?;
+        serde_json::from_str::<Value>(&contents).map_err(|err| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to parse {}: {err}", path.display()),
+            )
+        })?
+    } else {
+        json!({})
+    };
+
+    let root_obj = root.as_object_mut().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "Failed to parse {}: root must be a JSON object",
+                path.display()
+            ),
+        )
+    })?;
+
+    let shader_value = root_obj
+        .entry("shader".to_string())
+        .or_insert_with(|| json!({}));
+    let shader_obj = shader_value.as_object_mut().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "Failed to parse {}: shader must be a JSON object",
+                path.display()
+            ),
+        )
+    })?;
+
+    match active_file {
+        Some(file) => {
+            shader_obj.insert("active_file".to_string(), Value::String(file.to_string()));
+        }
+        None => {
+            shader_obj.remove("active_file");
+        }
+    }
+
+    fs::write(path, format!("{}\n", serde_json::to_string_pretty(&root)?))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
     use std::process;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     #[test]
     fn missing_config_uses_defaults() {
@@ -103,6 +167,7 @@ mod tests {
         assert_eq!(options.shader.curvature, defaults.curvature);
         assert_eq!(options.shader.color_intensity, defaults.color_intensity);
         assert_eq!(options.shader.mode, defaults.mode);
+        assert_eq!(options.shader.active_file, None);
     }
 
     #[test]
@@ -114,7 +179,8 @@ mod tests {
                     "scanline_strength": 0.27,
                     "curvature": 0.11,
                     "color_intensity": 1.2,
-                    "mode": "palette_mutation"
+                    "mode": "palette_mutation",
+                    "active_file": "palette-a.wgsl"
                 }
             }"#,
         );
@@ -126,6 +192,38 @@ mod tests {
         assert!((options.shader.curvature - 0.11).abs() < f32::EPSILON);
         assert!((options.shader.color_intensity - 1.2).abs() < f32::EPSILON);
         assert_eq!(options.shader.mode, ShaderColorMode::PaletteMutation);
+        assert_eq!(
+            options.shader.active_file.as_deref(),
+            Some("palette-a.wgsl")
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn persists_active_shader_file() {
+        let path = write_temp_config(
+            r#"{
+                "graphics_backend": "wgpu_shader",
+                "shader": {
+                    "scanline_strength": 0.22
+                }
+            }"#,
+        );
+
+        save_active_shader_file_to_path(&path, Some("scanlines.wgsl"))
+            .expect("active shader should be written");
+        let (_, options) =
+            load_graphics_settings_from_path(&path).expect("config should remain readable");
+        assert_eq!(
+            options.shader.active_file.as_deref(),
+            Some("scanlines.wgsl")
+        );
+
+        save_active_shader_file_to_path(&path, None).expect("active shader should be cleared");
+        let (_, options) =
+            load_graphics_settings_from_path(&path).expect("config should remain readable");
+        assert_eq!(options.shader.active_file, None);
 
         let _ = fs::remove_file(path);
     }
@@ -200,11 +298,13 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("time should be after unix epoch")
             .as_nanos();
+        let counter = TEMP_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
         let mut path = std::env::temp_dir();
         path.push(format!(
-            "gabalah_{label}_{}_{}.json",
+            "gabalah_{label}_{}_{}_{}.json",
             process::id(),
-            timestamp
+            timestamp,
+            counter
         ));
         path
     }
