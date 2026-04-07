@@ -110,7 +110,7 @@ pub fn run_loop(
                 }
             }
             if any_newly_pressed {
-                emulator.cpu.set_if(emulator.cpu.get_if() | 0x10);
+                emulator.cpu.raise_if(0x10);
             }
             if input.key_pressed(KeyCode::F9) {
                 emulator.request_dump();
@@ -257,7 +257,7 @@ impl Emulator {
             self.tick_lcd(cycles);
 
             if self.cpu.memory.tick(cycles as u32) {
-                self.cpu.set_if(self.cpu.get_if() | 0x04);
+                self.cpu.raise_if(0x04);
             }
 
             if self.is_interrupt_pending() {
@@ -266,7 +266,7 @@ impl Emulator {
                 self.tick_lcd(interrupt_cycles);
 
                 if self.cpu.memory.tick(interrupt_cycles as u32) {
-                    self.cpu.set_if(self.cpu.get_if() | 0x04);
+                    self.cpu.raise_if(0x04);
                 }
             }
         }
@@ -288,7 +288,7 @@ impl Emulator {
             let new_ly = if ly >= 153 { 0 } else { ly + 1 };
             self.cpu.memory.set_ly_raw(new_ly);
             if new_ly == 144 {
-                self.cpu.set_if(self.cpu.get_if() | 0x01);
+                self.cpu.raise_if(0x01);
             }
         }
 
@@ -332,7 +332,7 @@ impl Emulator {
         };
         let lyc_irq = coincidence && !old_coincidence && (new_stat & 0x40) != 0;
         if (mode_changed && mode_irq) || lyc_irq {
-            self.cpu.set_if(self.cpu.get_if() | 0x02);
+            self.cpu.raise_if(0x02);
         }
     }
 
@@ -347,7 +347,7 @@ impl Emulator {
         let pending = if_contents & ie_contents;
         for bit in 0..5u8 {
             if pending & (1 << bit) != 0 {
-                self.cpu.set_if(if_contents & !(1 << bit));
+                self.cpu.clear_if(1 << bit);
                 let vector = 0x0040u16 + (bit as u16) * 8;
                 self.call(vector);
                 self.cpu.total_cycles += INTERRUPT_SERVICE_CYCLES as u64;
@@ -444,7 +444,7 @@ mod tests {
         cpu.registers.sp = 0xFFFE;
         cpu.registers.ime = true;
         cpu.memory.write_byte(Addr(0xFFFF), 0x04); // IE: timer
-        cpu.set_if(0x04); // IF: timer pending
+        cpu.raise_if(0x04); // IF: timer pending
 
         let mut emulator = Emulator::new(cpu);
         let cycles = emulator.interrupt();
@@ -463,7 +463,7 @@ mod tests {
         let mut cpu = Cpu::new();
         cpu.registers.ime = true;
         cpu.memory.write_byte(Addr(0xFFFF), 0x01); // IE: vblank
-        cpu.set_if(0x01); // IF: vblank pending
+        cpu.raise_if(0x01); // IF: vblank pending
         cpu.memory.write_byte(Addr(0xFF07), 0x05); // TAC: enabled, 16-cycle timer
 
         let mut emulator = Emulator::new(cpu);

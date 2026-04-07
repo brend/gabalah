@@ -283,6 +283,22 @@ impl Ram {
         )
     }
 
+    pub fn read_ie(&self) -> u8 {
+        self.cells[0xFFFF]
+    }
+
+    pub fn read_if(&self) -> u8 {
+        self.cells[0xFF0F]
+    }
+
+    pub fn raise_if(&mut self, mask: u8) {
+        self.cells[0xFF0F] |= mask;
+    }
+
+    pub fn clear_if(&mut self, mask: u8) {
+        self.cells[0xFF0F] &= !mask;
+    }
+
     pub fn as_slice(&self) -> &[u8] {
         &self.cells
     }

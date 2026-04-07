@@ -61,15 +61,19 @@ impl Cpu {
     }
 
     pub fn get_ie(&self) -> u8 {
-        self.memory.read_byte(Addr(0xFFFF))
+        self.memory.read_ie()
     }
 
     pub fn get_if(&self) -> u8 {
-        self.memory.read_byte(Addr(0xFF0F))
+        self.memory.read_if()
     }
 
-    pub fn set_if(&mut self, value: u8) {
-        self.memory.write_byte(Addr(0xFF0F), value);
+    pub fn raise_if(&mut self, mask: u8) {
+        self.memory.raise_if(mask);
+    }
+
+    pub fn clear_if(&mut self, mask: u8) {
+        self.memory.clear_if(mask);
     }
 
     /// Executes an instruction, modifying the state of the CPU
