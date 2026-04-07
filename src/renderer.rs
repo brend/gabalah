@@ -58,11 +58,14 @@ fn render_obj(ram: &[u8], screen: &mut [u8]) {
             ram[0xFF48]
         };
 
-        for row in 0..obj_height {
-            let screen_y = tile_y + row as i16;
-            if !(0..HEIGHT as i16).contains(&screen_y) {
-                continue;
-            }
+        // Pre-clamp row/col ranges to screen bounds — no per-pixel contains() needed.
+        let row_start = (-tile_y).max(0) as usize;
+        let row_end = (HEIGHT as i16 - tile_y).clamp(0, obj_height as i16) as usize;
+        let col_start = (-tile_x).max(0) as usize;
+        let col_end = (WIDTH as i16 - tile_x).clamp(0, 8) as usize;
+
+        for row in row_start..row_end {
+            let screen_y = (tile_y + row as i16) as usize;
 
             let obj_row = if y_flip { obj_height - 1 - row } else { row };
             let tile_row = obj_row & 7;
@@ -75,11 +78,8 @@ fn render_obj(ram: &[u8], screen: &mut [u8]) {
             let lo = ram[tile_addr + tile_row * 2];
             let hi = ram[tile_addr + tile_row * 2 + 1];
 
-            for col in 0..8 {
-                let screen_x = tile_x + col as i16;
-                if !(0..WIDTH as i16).contains(&screen_x) {
-                    continue;
-                }
+            for col in col_start..col_end {
+                let screen_x = (tile_x + col as i16) as usize;
 
                 let obj_col = if x_flip { 7 - col } else { col };
                 let bit = 7 - obj_col;
@@ -90,7 +90,7 @@ fn render_obj(ram: &[u8], screen: &mut [u8]) {
                 }
 
                 let color = (obp >> (palette_index * 2)) & 0x3;
-                let offset = (screen_y as usize * WIDTH as usize + screen_x as usize) * 4;
+                let offset = (screen_y * WIDTH as usize + screen_x) * 4;
                 screen[offset..offset + 4].copy_from_slice(&GB_COLORS[color as usize]);
             }
         }

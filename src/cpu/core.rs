@@ -15,7 +15,7 @@ pub struct Cpu {
     pub memory: Ram,
     pub registers: Registers,
     pub total_cycles: u64,
-    ime_activation_countdown: i32,
+    pending_ime: bool,
     pub halted: bool,
 }
 
@@ -32,7 +32,7 @@ impl Cpu {
             memory: Ram::new(),
             registers: Registers::new(),
             total_cycles: 0,
-            ime_activation_countdown: 0,
+            pending_ime: false,
             halted: false,
         }
     }
@@ -91,11 +91,9 @@ impl Cpu {
         let r = &mut self.registers;
         let m = &mut self.memory;
 
-        if self.ime_activation_countdown > 0 {
-            self.ime_activation_countdown -= 1;
-            if self.ime_activation_countdown == 0 {
-                r.ime = true;
-            }
+        if self.pending_ime {
+            self.pending_ime = false;
+            r.ime = true;
         }
 
         match instruction.mnemonic {
@@ -241,7 +239,7 @@ impl Cpu {
                 r.sp = r.sp.wrapping_add(2);
                 r.ime = true;
             }
-            Ei => self.ime_activation_countdown = 1,
+            Ei => self.pending_ime = true,
             Di => r.ime = false,
             Jp(dst) => {
                 debug_assert!(dst.target_size() == 2);

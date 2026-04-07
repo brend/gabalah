@@ -27,6 +27,17 @@ wgpu = "0.19"
 winit = "0.29"
 winit_input_helper = "0.15"
 
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "renderer"
+harness = false
+
+[[bench]]
+name = "cpu"
+harness = false
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

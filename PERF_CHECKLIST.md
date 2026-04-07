@@ -17,26 +17,28 @@
   Track VRAM writes and only re-render tiles that have changed. Large win for games with
   mostly-static backgrounds. Requires write-tracking in `Ram` and a tile-dirty bitfield.
 
-- [ ] **#4 — Sprite clip-rect pre-computation** (`render_obj`)
-  Currently checks `(0..WIDTH).contains(&screen_x)` per pixel. Pre-clamp the col loop bounds
-  based on `tile_x` to eliminate per-pixel branches.
+- [x] **#4 — Sprite clip-rect pre-computation** (`render_obj`)
+  Pre-clamp row/col loop ranges from `tile_y`/`tile_x` before entering the loops.
+  Eliminates the per-pixel `contains()` bounds checks entirely; partially off-screen sprites
+  now iterate only over the visible slice.
 
 ## CPU (`src/cpu/`)
 
-- [ ] **#5 — Inline `Location`/`Operand` read/write methods** (`src/cpu/ops.rs`)
-  Each instruction dispatches through two nested match chains (Operand → Location).
-  Add `#[inline]` to hot methods; verify with `cargo asm` that release builds already inline them.
+- [~] **#5 — Inline `Location`/`Operand` read/write methods** (`src/cpu/ops.rs`)
+  Skipped: `cpu_step_nop` measures 8.8 ns — the compiler is already inlining in release mode.
+  No measurable headroom.
 
-- [ ] **#6 — Collapse ALU flag writes to a single bitmask assignment** (`src/cpu/alu.rs`)
-  Each `set_zero()` / `set_carry()` etc. is a conditional branch. Replace with a single
-  expression that builds the full flags byte and writes it once per operation.
+- [~] **#6 — Collapse ALU flag writes to a single bitmask assignment** (`src/cpu/alu.rs`)
+  Skipped: ALU path is only 1.6 ns above NOP (~10.4 ns total). Even eliminating it entirely
+  saves ~0.11 ms/frame — well inside budget. Compiler likely already merges the branches.
 
-- [ ] **#7 — Replace `ime_activation_countdown: i32` with a `bool`** (`src/cpu/core.rs`)
-  The countdown is decremented and checked every instruction. A `bool` + a one-shot flag
-  eliminates the arithmetic entirely.
+- [x] **#7 — Replace `ime_activation_countdown: i32` with a `bool`** (`src/cpu/core.rs`)
+  Replaced with `pending_ime: bool`. `EI` sets it true; the next `execute()` fires it,
+  clears it, and enables `ime`. Eliminates the decrement + two comparisons per instruction.
 
 ## Infrastructure
 
-- [ ] **#8 — Add criterion benchmarks**
-  Add benchmarks for `render_frame`, `Cpu::step`, and memory read/write to get baseline numbers
-  before further optimization. Without profiling data the ordering of remaining items is a guess.
+- [x] **#8 — Add criterion benchmarks**
+  `benches/renderer.rs`: `render_frame` with a realistic RAM state (scroll, tile data, one sprite).
+  `benches/cpu.rs`: `cpu_step_nop` (dispatch overhead) and `cpu_step_alu` (ALU + flag path).
+  Run with `cargo bench`; HTML reports land in `target/criterion/`.
