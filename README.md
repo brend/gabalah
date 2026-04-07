@@ -47,6 +47,7 @@ Supported values for `"shader.mode"`:
 - `"palette_mutation"`: quantized-tone procedural palette remap (wildest mode)
 
 `"shader.color_intensity"` controls how strong the non-classic color modes are (range `0.0..1.5`).
+For `palette_mutation`, a readable starting range is usually `0.65..0.95`.
 
 Press `R` while running to reload shader settings from `config.json` without restarting.
 Changing `"graphics_backend"` still requires restarting the app.
