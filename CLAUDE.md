@@ -36,7 +36,7 @@ src/
 - **Display**: `Emulator::draw()` calls `renderer::render_frame()` at 160×144 (scaled 3× by the window layer). `ui::GraphicsBackend` handles presentation (`pixels` or `wgpu_shader`), selected from `config.json`. Frame rate is capped near ~59.7 fps.
 - **Shader config reload**: Pressing `R` reloads shader options from `config.json` at runtime (including `shader.mode` + `shader.color_intensity`). Backend type changes still require restart.
 - **PPU timing**: `app.rs` tracks LY/mode progression from CPU cycles, updates STAT mode/coincidence bits, and requests VBlank. STAT IRQ generation is intentionally disabled for now due to timing inaccuracy.
-- **renderer.rs**: Implements BG, window, and baseline sprite drawing. Missing sprite attributes (priority/flip/OBP1) and 8×16 mode.
+- **renderer.rs**: Implements BG, window, and sprite drawing. All sprite attributes are implemented: priority (bit 7), OBP1 select (bit 4), X flip (bit 5), Y flip (bit 6), and 8×16 mode (LCDC bit 2).
 
 ## Build & Test
 

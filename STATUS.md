@@ -49,7 +49,7 @@ Last updated: 2026-04-07
 ### PPU / Renderer
 - Background renderer with SCX/SCY scroll
 - Window renderer with WX/WY and `WX-7` positioning behavior
-- OBJ renderer (8×8 baseline) with transparency and OBP0 mapping
+- OBJ renderer with transparency, X/Y flip, OBP0/OBP1 palette select, priority (attribute bit 7), and 8×16 mode
 - LCDC gating:
   - LCD off (`bit 7 = 0`) renders blank frame
   - BG/Window master gate (`bit 0`) controls BG+Window drawing
@@ -59,8 +59,6 @@ Last updated: 2026-04-07
 ## Known Gaps
 
 ### PPU accuracy
-- OBJ attributes not implemented yet (priority, X/Y flip, OBP1 selection)
-- 8×16 sprite mode not implemented
 - STAT interrupt generation disabled pending tighter timing accuracy
 - No per-scanline register latching/render pipeline (mid-scanline effects not emulated)
 
@@ -80,7 +78,7 @@ Last updated: 2026-04-07
 |---|---|---|
 | CPU core ops | 28 (`tests/ops.rs`) | passing |
 | Memory/IO/timer/joypad/DMA | 23 (`tests/cpu.rs`) | passing |
-| Renderer (BG/window/OBJ baseline) | 10 (`src/renderer.rs`) | passing |
+| Renderer (BG/window/OBJ + attributes) | 13 (`src/renderer.rs`) | passing |
 | Graphics config/backend parsing | 10 (`src/config.rs`, `src/ui/mod.rs`) | passing |
 | WGSL shader contract/discovery tests | 5 (`src/ui/wgpu_shader_backend.rs`) | passing |
 | Interrupt conformance ROMs | partial/manual | in progress |

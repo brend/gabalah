@@ -24,15 +24,19 @@ pub fn render_frame(ram: &[u8], screen: &mut [u8]) {
         return;
     }
 
+    // bg_opaque tracks which pixels have a non-zero BG/window palette index,
+    // used by render_obj to resolve sprite priority (attribute bit 7).
+    let mut bg_opaque = vec![false; WIDTH as usize * HEIGHT as usize];
+
     // On DMG, LCDC bit 0 gates both BG and Window.
     if (lcdc & 0x01) != 0 {
-        render_bg(ram, screen);
-        render_window(ram, screen);
+        render_bg(ram, screen, &mut bg_opaque);
+        render_window(ram, screen, &mut bg_opaque);
     }
-    render_obj(ram, screen);
+    render_obj(ram, screen, &bg_opaque);
 }
 
-fn render_obj(ram: &[u8], screen: &mut [u8]) {
+fn render_obj(ram: &[u8], screen: &mut [u8], bg_opaque: &[bool]) {
     let lcdc = ram[0xFF40];
 
     // LCDC bit 1: OBJ (sprite) enable
@@ -40,7 +44,6 @@ fn render_obj(ram: &[u8], screen: &mut [u8]) {
         return;
     }
 
-    // TODO: Handle sprite priority (attribute bit 7)
     let obj_tile_base: usize = 0x8000;
     let obj_height: usize = if (lcdc & 0x04) != 0 { 16 } else { 8 };
     let mut obj_addr = 0xFE00;
@@ -50,6 +53,7 @@ fn render_obj(ram: &[u8], screen: &mut [u8]) {
         let tile_x = ram[obj_addr + 1] as i16 - 8;
         let tile_index = ram[obj_addr + 2];
         let attributes = ram[obj_addr + 3];
+        let priority = (attributes & 0x80) != 0;
         let x_flip = (attributes & 0x20) != 0;
         let y_flip = (attributes & 0x40) != 0;
         let obp = if (attributes & 0x10) != 0 {
@@ -89,6 +93,11 @@ fn render_obj(ram: &[u8], screen: &mut [u8]) {
                     continue;
                 }
 
+                // Priority bit: sprite is behind non-transparent BG/window pixels.
+                if priority && bg_opaque[screen_y * WIDTH as usize + screen_x] {
+                    continue;
+                }
+
                 let color = (obp >> (palette_index * 2)) & 0x3;
                 let offset = (screen_y * WIDTH as usize + screen_x) * 4;
                 screen[offset..offset + 4].copy_from_slice(&GB_COLORS[color as usize]);
@@ -107,7 +116,7 @@ fn tile_address(tile_index: u8, signed_addressing: bool) -> usize {
     }
 }
 
-fn render_bg(ram: &[u8], screen: &mut [u8]) {
+fn render_bg(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
     let lcdc = ram[0xFF40];
     let bgp = ram[0xFF47];
     let scy = ram[0xFF42] as usize;
@@ -144,13 +153,14 @@ fn render_bg(ram: &[u8], screen: &mut [u8]) {
             let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
             let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
 
-            let offset = (screen_y * WIDTH as usize + screen_x) * 4;
-            screen[offset..offset + 4].copy_from_slice(&GB_COLORS[shade]);
+            let flat = screen_y * WIDTH as usize + screen_x;
+            bg_opaque[flat] = palette_index != 0;
+            screen[flat * 4..flat * 4 + 4].copy_from_slice(&GB_COLORS[shade]);
         }
     }
 }
 
-fn render_window(ram: &[u8], screen: &mut [u8]) {
+fn render_window(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
     let lcdc = ram[0xFF40];
     if (lcdc & 0x20) == 0 {
         return;
@@ -197,8 +207,9 @@ fn render_window(ram: &[u8], screen: &mut [u8]) {
             let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
             let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
 
-            let offset = (screen_y * WIDTH as usize + screen_x) * 4;
-            screen[offset..offset + 4].copy_from_slice(&GB_COLORS[shade]);
+            let flat = screen_y * WIDTH as usize + screen_x;
+            bg_opaque[flat] = palette_index != 0;
+            screen[flat * 4..flat * 4 + 4].copy_from_slice(&GB_COLORS[shade]);
         }
     }
 }

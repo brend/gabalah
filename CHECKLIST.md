@@ -35,13 +35,13 @@ Items are ordered by dependency. Check off items as they are done and keep `STAT
 - [x] Background tile rendering (tile map + tile data + SCX/SCY)
 - [x] Window rendering (WX/WY, `WX-7`, map select)
 - [x] Baseline sprite rendering (8×8, transparency, OBP0)
+- [x] Sprite attribute bits: X/Y flip, OBP1 select, priority (attribute bit 7)
+- [x] 8×16 OBJ mode (LCDC bit 2)
 - [x] LY scanline progression (`0xFF44`, 0..153)
 - [x] VBlank request at LY=144
 - [x] Basic STAT mode/coincidence state updates (`0xFF41`)
 - [x] Respect LCDC display enable (`bit 7`) and BG/window gate (`bit 0`) in renderer
 - [ ] Enable STAT IRQ generation with accurate edge behavior
-- [ ] Implement sprite attribute bits (priority, x/y flip, OBP1 select)
-- [ ] Implement 8×16 OBJ mode (LCDC bit 2)
 - [ ] Add scanline-accurate render timing/latching for mid-frame register changes
 
 ---
