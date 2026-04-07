@@ -1,9 +1,9 @@
 mod alu;
-mod cpu;
+mod core;
 mod map;
 mod ops;
 
-pub use cpu::Cpu;
+pub use core::Cpu;
 #[allow(unused_imports)]
 pub use ops::Location;
 pub use ops::{Instruction, Mnemonic};
