@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use super::alu::Flags;
-use super::ops::Instruction;
+use super::ops::{CycleSpec, Instruction};
 use super::{
     alu, map, Mnemonic, CARRY_FLAG_BITMASK, HALF_CARRY_FLAG_BITMASK, SUBTRACTION_FLAG_BITMASK,
 };
@@ -13,7 +11,7 @@ pub struct Cpu {
     pub memory: Ram,
     pub registers: Registers,
     pub total_cycles: u64,
-    opcode_map: HashMap<u8, Instruction>,
+    opcode_map: [Instruction; 256],
     ime_activation_countdown: i32,
     pub halted: bool,
 }
@@ -56,7 +54,7 @@ impl Cpu {
             self.total_cycles += cycles as u64;
             return cycles;
         }
-        let instruction = self.opcode_map.get(&opcode).unwrap().clone();
+        let instruction = self.opcode_map[opcode as usize];
         self.execute(&instruction)
     }
 
@@ -355,16 +353,15 @@ impl Cpu {
                     .unwrap_or_else(|| panic!("PC overflow at {:#06X}", r.pc));
         }
 
-        let cycles = match instruction._cycles.as_slice() {
-            [single] => *single,
-            [taken, not_taken] => {
+        let cycles = match instruction.cycles {
+            CycleSpec::Fixed(single) => single,
+            CycleSpec::Branch { taken, not_taken } => {
                 if conditional_taken == Some(true) {
-                    *taken
+                    taken
                 } else {
-                    *not_taken
+                    not_taken
                 }
             }
-            _ => instruction._cycles[0],
         };
         self.total_cycles += cycles as u64;
         cycles

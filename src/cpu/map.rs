@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use super::ops::Location::*;
 use super::ops::Mnemonic::*;
 use super::Instruction;
@@ -7,8 +5,9 @@ use super::Instruction;
 type I = Instruction;
 
 /// Builds and returns a mapping of the 8-bit opcodes to instruction instances
-pub fn build_opcode_map() -> HashMap<u8, Instruction> {
-    let map: HashMap<u8, Instruction> = HashMap::from_iter([
+pub fn build_opcode_map() -> [Instruction; 256] {
+    let mut map = [I::new(Invalid("Unimplemented opcode"), 1, 4); 256];
+    for (opcode, instruction) in [
         // no-op
         (0x00, I::new(Nop, 1, 4)),
         // load nn into BC
@@ -76,7 +75,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // jump relative if nonzero
         (
             0x20,
-            I::new_ex(Jrc(FlagNz.imm(), Const8.imm()), 2, vec![12, 8]),
+            I::new_branch(Jrc(FlagNz.imm(), Const8.imm()), 2, 12, 8),
         ),
         // load nn into HL
         (0x21, I::new(Ld(HL.imm(), Const16.imm()), 3, 12)),
@@ -95,7 +94,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // jump relative if zero
         (
             0x28,
-            I::new_ex(Jrc(FlagZ.imm(), Const8.imm()), 2, vec![12, 8]),
+            I::new_branch(Jrc(FlagZ.imm(), Const8.imm()), 2, 12, 8),
         ),
         // add HL to HL
         (0x29, I::new(Add(HL.imm(), HL.imm()), 1, 8)),
@@ -114,7 +113,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // jump relative if C flag is clear
         (
             0x30,
-            I::new_ex(Jrc(FlagNc.imm(), Const8.imm()), 2, vec![12, 8]),
+            I::new_branch(Jrc(FlagNc.imm(), Const8.imm()), 2, 12, 8),
         ),
         // load nn into SP
         (0x31, I::new(Ld(SP.imm(), Const16.imm()), 3, 12)),
@@ -133,7 +132,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // jump relative if C flag is set
         (
             0x38,
-            I::new_ex(Jrc(FlagC.imm(), Const8.imm()), 2, vec![12, 8]),
+            I::new_branch(Jrc(FlagC.imm(), Const8.imm()), 2, 12, 8),
         ),
         // add SP to HL
         (0x39, I::new(Add(HL.imm(), SP.imm()), 1, 8)),
@@ -406,20 +405,20 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // compare A with A
         (0xBF, I::new(Cp(A.imm(), A.imm()), 1, 4)),
         // return if nonzero
-        (0xC0, I::new_ex(Retc(FlagNz.imm()), 1, vec![20, 8])),
+        (0xC0, I::new_branch(Retc(FlagNz.imm()), 1, 20, 8)),
         // pop BC
         (0xC1, I::new(Pop(BC.imm()), 1, 12)),
         // jump to nn if nonzero
         (
             0xC2,
-            I::new_ex(Jpc(FlagNz.imm(), Const16.imm()), 3, vec![16, 12]),
+            I::new_branch(Jpc(FlagNz.imm(), Const16.imm()), 3, 16, 12),
         ),
         // jump to nn
         (0xC3, I::new(Jp(Const16.imm()), 3, 16)),
         // call nn if nonzero
         (
             0xC4,
-            I::new_ex(Callc(FlagNz.imm(), Const16.imm()), 3, vec![24, 12]),
+            I::new_branch(Callc(FlagNz.imm(), Const16.imm()), 3, 24, 12),
         ),
         // push BC
         (0xC5, I::new(Push(BC.imm()), 1, 16)),
@@ -428,13 +427,13 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // restart from 0x00
         (0xC7, I::new(Rst(0x00), 1, 16)),
         // return if zero
-        (0xC8, I::new_ex(Retc(FlagZ.imm()), 1, vec![20, 8])),
+        (0xC8, I::new_branch(Retc(FlagZ.imm()), 1, 20, 8)),
         // return
         (0xC9, I::new(Ret, 1, 16)),
         // jump to nn if zero
         (
             0xCA,
-            I::new_ex(Jpc(FlagZ.imm(), Const16.imm()), 3, vec![16, 12]),
+            I::new_branch(Jpc(FlagZ.imm(), Const16.imm()), 3, 16, 12),
         ),
         // extended operations
         // 0xCB
@@ -442,7 +441,7 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // call nn if zero
         (
             0xCC,
-            I::new_ex(Callc(FlagZ.imm(), Const16.imm()), 3, vec![24, 12]),
+            I::new_branch(Callc(FlagZ.imm(), Const16.imm()), 3, 24, 12),
         ),
         // call nn
         (0xCD, I::new(Call(Const16.imm()), 3, 24)),
@@ -451,20 +450,20 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // restart from 0x08
         (0xCF, I::new(Rst(0x08), 1, 16)),
         // return if no carry
-        (0xD0, I::new_ex(Retc(FlagNc.imm()), 1, vec![20, 8])),
+        (0xD0, I::new_branch(Retc(FlagNc.imm()), 1, 20, 8)),
         // pop DE
         (0xD1, I::new(Pop(DE.imm()), 1, 12)),
         // jump to nn if no carry
         (
             0xD2,
-            I::new_ex(Jpc(FlagNc.imm(), Const16.imm()), 3, vec![16, 12]),
+            I::new_branch(Jpc(FlagNc.imm(), Const16.imm()), 3, 16, 12),
         ),
         // extended operations
         (0xD3, I::new(Invalid("0xD3"), 1, 4)),
         // call nn if no carry
         (
             0xD4,
-            I::new_ex(Callc(FlagNc.imm(), Const16.imm()), 3, vec![24, 12]),
+            I::new_branch(Callc(FlagNc.imm(), Const16.imm()), 3, 24, 12),
         ),
         // push DE
         (0xD5, I::new(Push(DE.imm()), 1, 16)),
@@ -473,20 +472,20 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         // restart from 0x10
         (0xD7, I::new(Rst(0x10), 1, 16)),
         // return if carry
-        (0xD8, I::new_ex(Retc(FlagC.imm()), 1, vec![20, 8])),
+        (0xD8, I::new_branch(Retc(FlagC.imm()), 1, 20, 8)),
         // return and enable interrupts
         (0xD9, I::new(Reti, 1, 16)),
         // jump to nn if carry
         (
             0xDA,
-            I::new_ex(Jpc(FlagC.imm(), Const16.imm()), 3, vec![16, 12]),
+            I::new_branch(Jpc(FlagC.imm(), Const16.imm()), 3, 16, 12),
         ),
         // extended operations
         (0xDB, I::new(Invalid("0xDB"), 1, 4)),
         // call nn if carry
         (
             0xDC,
-            I::new_ex(Callc(FlagC.imm(), Const16.imm()), 3, vec![24, 12]),
+            I::new_branch(Callc(FlagC.imm(), Const16.imm()), 3, 24, 12),
         ),
         // extended operations
         (0xDD, I::new(Invalid("0xDD"), 1, 4)),
@@ -558,7 +557,8 @@ pub fn build_opcode_map() -> HashMap<u8, Instruction> {
         (0xFE, I::new(Cp(A.imm(), Const8.imm()), 2, 8)),
         // restart from 0x38
         (0xFF, I::new(Rst(0x38), 1, 16)),
-    ]);
-
+    ] {
+        map[opcode as usize] = instruction;
+    }
     map
 }

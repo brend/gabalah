@@ -1,5 +1,3 @@
-use std::vec;
-
 use super::alu::Flags;
 use crate::memory::{Addr, Ram, Registers};
 
@@ -288,29 +286,45 @@ impl Operand {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum CycleSpec {
+    Fixed(usize),
+    Branch { taken: usize, not_taken: usize },
+}
+
 /// An instruction of the Game Boy's CPU
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Instruction {
     /// The instruction's assembly mnemonic, e.g. ld, inc
     pub mnemonic: Mnemonic,
     /// The length of the instruction in bytes
-    pub bytes: usize,
-    /// The duration of the instruction in CPU cycles
-    pub _cycles: Vec<usize>,
+    pub bytes: u8,
+    /// The duration of the instruction in CPU cycles.
+    pub cycles: CycleSpec,
 }
 
 impl Instruction {
-    /// Creates a new instruction with extended parameters
-    pub fn new_ex(mnemonic: Mnemonic, bytes: usize, cycles: Vec<usize>) -> Instruction {
+    fn with_cycles(mnemonic: Mnemonic, bytes: usize, cycles: CycleSpec) -> Instruction {
+        debug_assert!(u8::try_from(bytes).is_ok(), "instruction length overflow");
         Instruction {
             mnemonic,
-            bytes,
-            _cycles: cycles,
+            bytes: bytes as u8,
+            cycles,
         }
     }
 
     /// Creates a new instruction
     pub fn new(mnemonic: Mnemonic, bytes: usize, cycles: usize) -> Instruction {
-        Instruction::new_ex(mnemonic, bytes, vec![cycles])
+        Instruction::with_cycles(mnemonic, bytes, CycleSpec::Fixed(cycles))
+    }
+
+    /// Creates a new instruction with branch-dependent timing
+    pub fn new_branch(
+        mnemonic: Mnemonic,
+        bytes: usize,
+        taken: usize,
+        not_taken: usize,
+    ) -> Instruction {
+        Instruction::with_cycles(mnemonic, bytes, CycleSpec::Branch { taken, not_taken })
     }
 }
