@@ -65,9 +65,9 @@ fn render_obj(ram: &[u8], screen: &mut [u8]) {
             }
 
             let obj_row = if y_flip { obj_height - 1 - row } else { row };
-            let tile_row = obj_row % 8;
+            let tile_row = obj_row & 7;
             let row_tile_index = if obj_height == 16 {
-                ((tile_index & 0xFE) as usize) + (obj_row / 8)
+                ((tile_index & 0xFE) as usize) + (obj_row >> 3)
             } else {
                 tile_index as usize
             };
@@ -107,13 +107,6 @@ fn tile_address(tile_index: u8, signed_addressing: bool) -> usize {
     }
 }
 
-fn tile_palette_index(ram: &[u8], tile_address: usize, pixel_x: usize, pixel_y: usize) -> u8 {
-    let lo = ram[tile_address + pixel_y * 2];
-    let hi = ram[tile_address + pixel_y * 2 + 1];
-    let bit = 7 - pixel_x;
-    ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1)
-}
-
 fn render_bg(ram: &[u8], screen: &mut [u8]) {
     let lcdc = ram[0xFF40];
     let bgp = ram[0xFF47];
@@ -126,19 +119,29 @@ fn render_bg(ram: &[u8], screen: &mut [u8]) {
     let signed_addressing = (lcdc & 0x10) == 0;
 
     for screen_y in 0..HEIGHT as usize {
+        let bg_y = (scy + screen_y) & 0xFF;
+        let tile_row = bg_y >> 3;
+        let pixel_y = bg_y & 7;
+
+        // Cache tile row bytes; recomputed only when tile_col changes (every 8 pixels).
+        let mut current_tile_col = usize::MAX;
+        let mut lo = 0u8;
+        let mut hi = 0u8;
+
         for screen_x in 0..WIDTH as usize {
             let bg_x = (scx + screen_x) & 0xFF;
-            let bg_y = (scy + screen_y) & 0xFF;
+            let tile_col = bg_x >> 3;
 
-            let tile_col = bg_x / 8;
-            let tile_row = bg_y / 8;
-            let tile_index = ram[tile_map_base + tile_row * 32 + tile_col];
+            if tile_col != current_tile_col {
+                let tile_index = ram[tile_map_base + tile_row * 32 + tile_col];
+                let addr = tile_address(tile_index, signed_addressing);
+                lo = ram[addr + pixel_y * 2];
+                hi = ram[addr + pixel_y * 2 + 1];
+                current_tile_col = tile_col;
+            }
 
-            let tile_address = tile_address(tile_index, signed_addressing);
-
-            let pixel_x = bg_x % 8;
-            let pixel_y = bg_y % 8;
-            let palette_index = tile_palette_index(ram, tile_address, pixel_x, pixel_y);
+            let bit = 7 - (bg_x & 7);
+            let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
             let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
 
             let offset = (screen_y * WIDTH as usize + screen_x) * 4;
@@ -167,18 +170,31 @@ fn render_window(ram: &[u8], screen: &mut [u8]) {
 
     for screen_y in wy..HEIGHT as usize {
         let win_y = screen_y - wy;
+        let tile_row = win_y >> 3;
+        let pixel_y = win_y & 7;
+
+        // Cache tile row bytes; recomputed only when tile_col changes (every 8 pixels).
+        let mut current_tile_col = usize::MAX;
+        let mut lo = 0u8;
+        let mut hi = 0u8;
+
         for screen_x in 0..WIDTH as usize {
             if screen_x + 7 < wx {
                 continue;
             }
             let win_x = screen_x + 7 - wx;
-            let tile_col = win_x / 8;
-            let tile_row = win_y / 8;
-            let tile_index = ram[tile_map_base + tile_row * 32 + tile_col];
-            let tile_address = tile_address(tile_index, signed_addressing);
-            let pixel_x = win_x % 8;
-            let pixel_y = win_y % 8;
-            let palette_index = tile_palette_index(ram, tile_address, pixel_x, pixel_y);
+            let tile_col = win_x >> 3;
+
+            if tile_col != current_tile_col {
+                let tile_index = ram[tile_map_base + tile_row * 32 + tile_col];
+                let addr = tile_address(tile_index, signed_addressing);
+                lo = ram[addr + pixel_y * 2];
+                hi = ram[addr + pixel_y * 2 + 1];
+                current_tile_col = tile_col;
+            }
+
+            let bit = 7 - (win_x & 7);
+            let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
             let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
 
             let offset = (screen_y * WIDTH as usize + screen_x) * 4;
@@ -317,6 +333,59 @@ mod tests {
         render_frame(&ram, &mut screen);
         for col in 0..8 {
             assert_eq!(pixel(&screen, col, 0), GB_COLORS[3], "col {col}");
+        }
+    }
+
+    #[test]
+    fn scx_wraps_tile_map_mid_scanline() {
+        // SCX=252: bg_x starts at 252 (tile col 31), wraps to 0 (tile col 0) after 4 pixels.
+        // Tests that the per-row tile cache invalidates correctly on the 256→0 wrap.
+        let mut ram = blank_ram();
+        ram[0xFF40] = 0x91; // LCDC: display on, BG on, unsigned tile data
+        ram[0xFF47] = 0xE4; // BGP: identity
+        ram[0xFF43] = 252; // SCX
+
+        // Tile map row 0: col 31 → tile 1 (shade 3), col 0 → tile 2 (shade 1)
+        ram[0x9800 + 31] = 1;
+        ram[0x9800] = 2;
+        write_tile(&mut ram, 0x8010, [(0xFF, 0xFF); 8]); // tile 1: palette index 3
+        write_tile(&mut ram, 0x8020, [(0xFF, 0x00); 8]); // tile 2: palette index 1
+
+        let mut screen = blank_screen();
+        render_frame(&ram, &mut screen);
+
+        // screen x 0..4: bg_x 252..255 → tile col 31 → shade 3
+        for x in 0..4 {
+            assert_eq!(pixel(&screen, x, 0), GB_COLORS[3], "x={x} should be tile col 31");
+        }
+        // screen x 4..12: bg_x 0..7 → tile col 0 → shade 1
+        for x in 4..12 {
+            assert_eq!(pixel(&screen, x, 0), GB_COLORS[1], "x={x} should be tile col 0");
+        }
+    }
+
+    #[test]
+    fn adjacent_tiles_on_same_scanline_render_independently() {
+        // Two different tiles side-by-side; verifies the cache switches correctly at the
+        // 8-pixel tile boundary with no scroll offset.
+        let mut ram = blank_ram();
+        ram[0xFF40] = 0x91; // LCDC: display on, BG on, unsigned tile data
+        ram[0xFF47] = 0xE4; // BGP: identity
+
+        // Tile map: col 0 → tile 1 (shade 3), col 1 → tile 2 (shade 1)
+        ram[0x9800] = 1;
+        ram[0x9801] = 2;
+        write_tile(&mut ram, 0x8010, [(0xFF, 0xFF); 8]); // tile 1: shade 3
+        write_tile(&mut ram, 0x8020, [(0xFF, 0x00); 8]); // tile 2: shade 1
+
+        let mut screen = blank_screen();
+        render_frame(&ram, &mut screen);
+
+        for x in 0..8 {
+            assert_eq!(pixel(&screen, x, 0), GB_COLORS[3], "tile 1 x={x}");
+        }
+        for x in 8..16 {
+            assert_eq!(pixel(&screen, x, 0), GB_COLORS[1], "tile 2 x={x}");
         }
     }
 
