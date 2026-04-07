@@ -16,7 +16,7 @@ mod tests {
     fn test_ld_immediate() {
         let mut cpu = setup();
         let instruction = Instruction::new(
-            Mnemonic::Ld(Location::A.imm(), Location::Const8.imm()),
+            Mnemonic::Ld8(Location::A.imm(), Location::Const8.imm()),
             2,
             8,
         );
@@ -30,7 +30,7 @@ mod tests {
     fn test_inc() {
         let mut cpu = setup();
         cpu.registers.a = 0x10;
-        let instruction = Instruction::new(Mnemonic::Inc(Location::A.imm()), 1, 4);
+        let instruction = Instruction::new(Mnemonic::Inc8(Location::A.imm()), 1, 4);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.a, 0x11, "unexpected INC result");
         assert_eq!(cpu.registers.f, 0, "unexpected flags");
@@ -40,7 +40,7 @@ mod tests {
     fn test_inc_wrap() {
         let mut cpu = setup();
         cpu.registers.a = 0xFF;
-        let instruction = Instruction::new(Mnemonic::Inc(Location::A.imm()), 1, 4);
+        let instruction = Instruction::new(Mnemonic::Inc8(Location::A.imm()), 1, 4);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.a, 0x00, "unexpected INC result");
         assert_eq!(
@@ -54,7 +54,7 @@ mod tests {
     fn test_dec() {
         let mut cpu = setup();
         cpu.registers.a = 0x10;
-        let instruction = Instruction::new(Mnemonic::Dec(Location::A.imm()), 1, 4);
+        let instruction = Instruction::new(Mnemonic::Dec8(Location::A.imm()), 1, 4);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.a, 0x0F, "unexpected DEC result");
         assert_eq!(
@@ -68,7 +68,7 @@ mod tests {
     fn test_dec_zero() {
         let mut cpu = setup();
         cpu.registers.a = 0x01;
-        let instruction = Instruction::new(Mnemonic::Dec(Location::A.imm()), 1, 4);
+        let instruction = Instruction::new(Mnemonic::Dec8(Location::A.imm()), 1, 4);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.a, 0x00, "unexpected DEC result");
         assert_eq!(
@@ -83,7 +83,7 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.a = 0x10;
         let instruction = Instruction::new(
-            Mnemonic::Add(Location::A.imm(), Location::Const8.imm()),
+            Mnemonic::Add8(Location::A.imm(), Location::Const8.imm()),
             1,
             4,
         );
@@ -97,7 +97,7 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.a = 0xFF;
         let instruction = Instruction::new(
-            Mnemonic::Add(Location::A.imm(), Location::Const8.imm()),
+            Mnemonic::Add8(Location::A.imm(), Location::Const8.imm()),
             1,
             4,
         );
@@ -115,7 +115,7 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.a = 0x10;
         let instruction = Instruction::new(
-            Mnemonic::Sub(Location::A.imm(), Location::Const8.imm()),
+            Mnemonic::Sub8(Location::A.imm(), Location::Const8.imm()),
             1,
             4,
         );
@@ -134,7 +134,7 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.a = 0x10;
         let instruction = Instruction::new(
-            Mnemonic::Sub(Location::A.imm(), Location::Const8.imm()),
+            Mnemonic::Sub8(Location::A.imm(), Location::Const8.imm()),
             1,
             4,
         );
@@ -221,6 +221,66 @@ mod tests {
         cpu.memory.write_byte(Addr(0x101), 2);
         cpu.step();
         assert_eq!(cpu.registers.a, 3);
+    }
+
+    #[test]
+    fn test_add_hl_bc_opcode_09_uses_16_bit_path_and_preserves_z() {
+        let mut cpu = setup();
+        cpu.registers.set_hl(0x0FFF);
+        cpu.registers.set_bc(0x0001);
+        cpu.registers.f = ZERO_FLAG_BITMASK;
+        cpu.memory.write_byte(Addr(0x100), 0x09); // ADD HL,BC
+        cpu.step();
+
+        assert_eq!(cpu.registers.hl(), 0x1000);
+        assert_eq!(
+            cpu.registers.f,
+            ZERO_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK
+        );
+    }
+
+    #[test]
+    fn test_adc_immediate_opcode_ce_uses_carry_in() {
+        let mut cpu = setup();
+        cpu.registers.a = 0x0F;
+        cpu.registers.f = CARRY_FLAG_BITMASK;
+        cpu.memory.write_byte(Addr(0x100), 0xCE); // ADC A,d8
+        cpu.memory.write_byte(Addr(0x101), 0x01);
+        cpu.step();
+
+        assert_eq!(cpu.registers.a, 0x11);
+        assert_eq!(cpu.registers.f, HALF_CARRY_FLAG_BITMASK);
+    }
+
+    #[test]
+    fn test_sub_immediate_opcode_d6() {
+        let mut cpu = setup();
+        cpu.registers.a = 0x10;
+        cpu.memory.write_byte(Addr(0x100), 0xD6); // SUB d8
+        cpu.memory.write_byte(Addr(0x101), 0x01);
+        cpu.step();
+
+        assert_eq!(cpu.registers.a, 0x0F);
+        assert_eq!(
+            cpu.registers.f,
+            SUBTRACTION_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK
+        );
+    }
+
+    #[test]
+    fn test_sbc_immediate_opcode_de_uses_carry_in() {
+        let mut cpu = setup();
+        cpu.registers.a = 0x10;
+        cpu.registers.f = CARRY_FLAG_BITMASK;
+        cpu.memory.write_byte(Addr(0x100), 0xDE); // SBC A,d8
+        cpu.memory.write_byte(Addr(0x101), 0x0F);
+        cpu.step();
+
+        assert_eq!(cpu.registers.a, 0x00);
+        assert_eq!(
+            cpu.registers.f,
+            SUBTRACTION_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK | ZERO_FLAG_BITMASK
+        );
     }
 
     #[test]

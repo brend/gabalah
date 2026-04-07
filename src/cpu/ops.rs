@@ -13,24 +13,32 @@ pub enum Mnemonic {
     Nop,
     /// Stop
     Stop(Operand),
-    /// Load data from a source to a destination
-    Ld(Operand, Operand),
-    /// Increase the target
-    Inc(Operand),
-    /// Decrease the target
-    Dec(Operand),
+    /// Load 8-bit data from a source to a destination
+    Ld8(Operand, Operand),
+    /// Load 16-bit data from a source to a destination
+    Ld16(Operand, Operand),
+    /// Increase an 8-bit target
+    Inc8(Operand),
+    /// Increase a 16-bit target
+    Inc16(Operand),
+    /// Decrease an 8-bit target
+    Dec8(Operand),
+    /// Decrease a 16-bit target
+    Dec16(Operand),
     /// Rotate A left and carry
     Rlca,
     /// Rotate A right; old bit 0 to Carry flag
     Rrca,
-    /// Addition
-    Add(Operand, Operand),
-    /// Add with carry
-    Adc(Operand, Operand),
-    /// Subtract
-    Sub(Operand, Operand),
-    /// Subtract with carry
-    Sbc(Operand, Operand),
+    /// 8-bit addition
+    Add8(Operand, Operand),
+    /// 16-bit addition
+    Add16(Operand, Operand),
+    /// 8-bit add with carry
+    Adc8(Operand, Operand),
+    /// 8-bit subtract
+    Sub8(Operand, Operand),
+    /// 8-bit subtract with carry
+    Sbc8(Operand, Operand),
     /// Rotate A left through Carry flag
     Rla,
     /// Jump relative

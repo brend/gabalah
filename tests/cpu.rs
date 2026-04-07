@@ -228,6 +228,24 @@ mod tests {
         }
     }
 
+    #[test]
+    fn dma_from_oam_page_is_stable() {
+        let mut ram = Ram::new();
+        for i in 0..160u8 {
+            ram.write_byte(Addr(0xFE00 + i as u16), i ^ 0x5A);
+        }
+
+        ram.write_byte(Addr(0xFF46), 0xFE); // trigger DMA from 0xFE00 (OAM page)
+
+        for i in 0..160u8 {
+            assert_eq!(
+                ram.read_byte(Addr(0xFE00 + i as u16)),
+                i ^ 0x5A,
+                "OAM byte {i}"
+            );
+        }
+    }
+
     // --- LCD IO semantics ---
 
     #[test]

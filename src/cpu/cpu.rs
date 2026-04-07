@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use super::alu::Flags;
 use super::ops::{CycleSpec, Instruction};
 use super::{
@@ -7,11 +9,12 @@ use crate::memory::{Addr, Ram, Registers};
 
 use Mnemonic::*;
 
+static OPCODE_MAP: LazyLock<[Instruction; 256]> = LazyLock::new(map::build_opcode_map);
+
 pub struct Cpu {
     pub memory: Ram,
     pub registers: Registers,
     pub total_cycles: u64,
-    opcode_map: [Instruction; 256],
     ime_activation_countdown: i32,
     pub halted: bool,
 }
@@ -23,7 +26,6 @@ impl Cpu {
             memory: Ram::new(),
             registers: Registers::new(),
             total_cycles: 0,
-            opcode_map: map::build_opcode_map(),
             ime_activation_countdown: 0,
             halted: false,
         }
@@ -54,7 +56,7 @@ impl Cpu {
             self.total_cycles += cycles as u64;
             return cycles;
         }
-        let instruction = self.opcode_map[opcode as usize];
+        let instruction = OPCODE_MAP[opcode as usize];
         self.execute(&instruction)
     }
 
@@ -88,88 +90,63 @@ impl Cpu {
 
         match instruction.mnemonic {
             Nop => (),
-            Ld(dst, src) => {
-                if dst.target_size() == 2 || src.target_size() == 2 {
-                    let word = src.read_word(r, m);
-                    dst.write_word(r, m, word);
-                } else {
-                    let byte = src.read_byte(r, m);
-                    dst.write_byte(r, m, byte);
-                }
+            Ld8(dst, src) => {
+                let byte = src.read_byte(r, m);
+                dst.write_byte(r, m, byte);
             }
-            Inc(dst) => {
-                if dst.target_size() == 1 {
-                    let byte = dst.read_byte(r, m);
-                    let increased = alu::inc8(byte, &mut r.f);
-                    dst.write_byte(r, m, increased);
-                } else {
-                    let word = dst.read_word(r, m);
-                    let increased = alu::inc16(word);
-                    dst.write_word(r, m, increased);
-                }
+            Ld16(dst, src) => {
+                let word = src.read_word(r, m);
+                dst.write_word(r, m, word);
             }
-            Dec(dst) => {
-                if dst.target_size() == 1 {
-                    let byte = dst.read_byte(r, m);
-                    let decreased = alu::dec8(byte, &mut r.f);
-                    dst.write_byte(r, m, decreased);
-                } else {
-                    let word = dst.read_word(r, m);
-                    let decreased = alu::dec16(word);
-                    dst.write_word(r, m, decreased);
-                }
+            Inc8(dst) => {
+                let byte = dst.read_byte(r, m);
+                let increased = alu::inc8(byte, &mut r.f);
+                dst.write_byte(r, m, increased);
             }
-            Add(dst, src) => {
-                if dst.target_size() == 1 {
-                    let dst_byte = dst.read_byte(r, m);
-                    let src_byte = src.read_byte(r, m);
-                    let sum = alu::add8(dst_byte, src_byte, &mut r.f);
-                    dst.write_byte(r, m, sum);
-                } else {
-                    let dst_word = dst.read_word(r, m);
-                    let src_word = src.read_word(r, m);
-                    let sum = alu::add16(dst_word, src_word, &mut r.f);
-                    dst.write_word(r, m, sum);
-                }
+            Inc16(dst) => {
+                let word = dst.read_word(r, m);
+                let increased = alu::inc16(word);
+                dst.write_word(r, m, increased);
             }
-            Adc(dst, src) => {
-                if dst.target_size() == 1 {
-                    let dst_byte = dst.read_byte(r, m);
-                    let src_byte = src.read_byte(r, m);
-                    let sum = alu::adc8(dst_byte, src_byte, &mut r.f);
-                    dst.write_byte(r, m, sum);
-                } else {
-                    let dst_word = dst.read_word(r, m);
-                    let src_word = src.read_word(r, m);
-                    let sum = alu::adc16(dst_word, src_word, &mut r.f);
-                    dst.write_word(r, m, sum);
-                }
+            Dec8(dst) => {
+                let byte = dst.read_byte(r, m);
+                let decreased = alu::dec8(byte, &mut r.f);
+                dst.write_byte(r, m, decreased);
             }
-            Sub(dst, src) => {
-                if dst.target_size() == 1 {
-                    let dst_byte = dst.read_byte(r, m);
-                    let src_byte = src.read_byte(r, m);
-                    let difference = alu::sub8(dst_byte, src_byte, &mut r.f);
-                    dst.write_byte(r, m, difference);
-                } else {
-                    let dst_word = dst.read_word(r, m);
-                    let src_word = src.read_word(r, m);
-                    let difference = alu::sub16(dst_word, src_word, &mut r.f);
-                    dst.write_word(r, m, difference);
-                }
+            Dec16(dst) => {
+                let word = dst.read_word(r, m);
+                let decreased = alu::dec16(word);
+                dst.write_word(r, m, decreased);
             }
-            Sbc(dst, src) => {
-                if dst.target_size() == 1 {
-                    let dst_byte = dst.read_byte(r, m);
-                    let src_byte = src.read_byte(r, m);
-                    let difference = alu::sbc8(dst_byte, src_byte, &mut r.f);
-                    dst.write_byte(r, m, difference);
-                } else {
-                    let dst_word = dst.read_word(r, m);
-                    let src_word = src.read_word(r, m);
-                    let difference = alu::sbc16(dst_word, src_word, &mut r.f);
-                    dst.write_word(r, m, difference);
-                }
+            Add8(dst, src) => {
+                let dst_byte = dst.read_byte(r, m);
+                let src_byte = src.read_byte(r, m);
+                let sum = alu::add8(dst_byte, src_byte, &mut r.f);
+                dst.write_byte(r, m, sum);
+            }
+            Add16(dst, src) => {
+                let dst_word = dst.read_word(r, m);
+                let src_word = src.read_word(r, m);
+                let sum = alu::add16(dst_word, src_word, &mut r.f);
+                dst.write_word(r, m, sum);
+            }
+            Adc8(dst, src) => {
+                let dst_byte = dst.read_byte(r, m);
+                let src_byte = src.read_byte(r, m);
+                let sum = alu::adc8(dst_byte, src_byte, &mut r.f);
+                dst.write_byte(r, m, sum);
+            }
+            Sub8(dst, src) => {
+                let dst_byte = dst.read_byte(r, m);
+                let src_byte = src.read_byte(r, m);
+                let difference = alu::sub8(dst_byte, src_byte, &mut r.f);
+                dst.write_byte(r, m, difference);
+            }
+            Sbc8(dst, src) => {
+                let dst_byte = dst.read_byte(r, m);
+                let src_byte = src.read_byte(r, m);
+                let difference = alu::sbc8(dst_byte, src_byte, &mut r.f);
+                dst.write_byte(r, m, difference);
             }
             Rlca => r.a = alu::rlc(r.a, &mut r.f),
             Rrca => r.a = alu::rrc(r.a, &mut r.f),

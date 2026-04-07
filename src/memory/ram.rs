@@ -183,8 +183,7 @@ impl Ram {
         }
         if address.0 == 0xFF46 {
             let src_base = (value as usize) << 8;
-            let source_slice = &self.cells[src_base..src_base + 160].to_vec();
-            self.cells[0xFE00..0xFE00 + 160].copy_from_slice(source_slice);
+            self.cells.copy_within(src_base..src_base + 160, 0xFE00);
             return;
         }
         if address.0 == 0xFF41 {
