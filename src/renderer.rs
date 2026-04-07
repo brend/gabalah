@@ -40,40 +40,55 @@ fn render_obj(ram: &[u8], screen: &mut [u8]) {
         return;
     }
 
-    // TODO: Handle sprite attributes (color palette, priority)
-    // TODO: Handle 8x16 pixel sprites (LCDC bit 2 set)
-
+    // TODO: Handle sprite priority (attribute bit 7)
     let obj_tile_base: usize = 0x8000;
+    let obj_height: usize = if (lcdc & 0x04) != 0 { 16 } else { 8 };
     let mut obj_addr = 0xFE00;
 
     while obj_addr <= 0xFE9F {
-        let tile_y = ram[obj_addr].wrapping_sub(16) as usize;
-        let tile_x = ram[obj_addr + 1].wrapping_sub(8) as usize;
+        let tile_y = ram[obj_addr] as i16 - 16;
+        let tile_x = ram[obj_addr + 1] as i16 - 8;
         let tile_index = ram[obj_addr + 2];
-        //let attributes = ram[objAddr + 3];
-        let tile_addr = obj_tile_base + (tile_index as usize * 16);
-        let tile_data: &[u8] = &ram[tile_addr..tile_addr + 16];
+        let attributes = ram[obj_addr + 3];
+        let x_flip = (attributes & 0x20) != 0;
+        let y_flip = (attributes & 0x40) != 0;
+        let obp = if (attributes & 0x10) != 0 {
+            ram[0xFF49]
+        } else {
+            ram[0xFF48]
+        };
 
-        for row in 0..8 {
-            let screen_y = tile_y + row;
-            if screen_y >= HEIGHT as usize {
-                break;
+        for row in 0..obj_height {
+            let screen_y = tile_y + row as i16;
+            if !(0..HEIGHT as i16).contains(&screen_y) {
+                continue;
             }
+
+            let obj_row = if y_flip { obj_height - 1 - row } else { row };
+            let tile_row = obj_row % 8;
+            let row_tile_index = if obj_height == 16 {
+                ((tile_index & 0xFE) as usize) + (obj_row / 8)
+            } else {
+                tile_index as usize
+            };
+            let tile_addr = obj_tile_base + (row_tile_index * 16);
+            let lo = ram[tile_addr + tile_row * 2];
+            let hi = ram[tile_addr + tile_row * 2 + 1];
+
             for col in 0..8 {
-                let screen_x = tile_x + col;
-                if screen_x >= WIDTH as usize {
-                    break;
+                let screen_x = tile_x + col as i16;
+                if !(0..WIDTH as i16).contains(&screen_x) {
+                    continue;
                 }
-                let lo = tile_data[row * 2];
-                let hi = tile_data[row * 2 + 1];
-                let bit = 7 - col;
+
+                let obj_col = if x_flip { 7 - col } else { col };
+                let bit = 7 - obj_col;
                 let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
 
                 if palette_index == 0 {
                     continue;
                 }
 
-                let obp = ram[0xFF48]; // OBP0 (ignoring attribute bit 4 for now)
                 let color = (obp >> (palette_index * 2)) & 0x3;
                 let offset = (screen_y as usize * WIDTH as usize + screen_x as usize) * 4;
                 screen[offset..offset + 4].copy_from_slice(&GB_COLORS[color as usize]);
@@ -418,6 +433,40 @@ mod tests {
             pixel(&screen, 8, 8),
             GB_COLORS[0],
             "transparent sprite must not overwrite BG"
+        );
+    }
+
+    #[test]
+    fn sprite_attribute_x_flip_mirrors_horizontally() {
+        let mut ram = blank_ram();
+        ram[0xFF40] = 0x93; // LCDC: display on, BG on, OBJ on, 8x8 sprites
+        ram[0xFF47] = 0xE4; // BGP: identity
+        ram[0xFF48] = 0xE4; // OBP0: identity
+
+        // Sprite tile 1 row 0 has a single palette-3 pixel at the left edge.
+        write_tile(
+            &mut ram,
+            0x8010,
+            [(0b1000_0000, 0b1000_0000), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0)],
+        );
+
+        ram[0xFE00] = 24; // Y: screen row 8
+        ram[0xFE01] = 16; // X: screen col 8
+        ram[0xFE02] = 1; // tile index
+        ram[0xFE03] = 0x20; // X flip
+
+        let mut screen = blank_screen();
+        render_frame(&ram, &mut screen);
+
+        assert_eq!(
+            pixel(&screen, 8, 8),
+            GB_COLORS[0],
+            "left edge should be empty after X flip"
+        );
+        assert_eq!(
+            pixel(&screen, 15, 8),
+            GB_COLORS[3],
+            "right edge should contain mirrored pixel"
         );
     }
 
