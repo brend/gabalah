@@ -379,6 +379,41 @@ mod tests {
     }
 
     #[test]
+    fn test_cb_bit_hl_uses_12_cycles() {
+        let mut cpu = setup();
+        cpu.registers.set_hl(0xC000);
+        cpu.memory.write_byte(Addr(0xC000), 0x80);
+        cpu.memory.write_byte(Addr(0x100), 0xCB);
+        cpu.memory.write_byte(Addr(0x101), 0x7E); // BIT 7,(HL)
+        cpu.step();
+
+        assert_eq!(cpu.total_cycles, 12);
+    }
+
+    #[test]
+    fn test_cb_bit_cycle_matrix_register_and_hl() {
+        let mut cpu = setup();
+        cpu.registers.b = 0x01;
+        cpu.registers.set_hl(0xC000);
+        cpu.memory.write_byte(Addr(0xC000), 0x80);
+
+        cpu.memory.write_byte(Addr(0x100), 0xCB);
+        cpu.memory.write_byte(Addr(0x101), 0x40); // BIT 0,B
+        cpu.step();
+        assert_eq!(cpu.total_cycles, 8);
+
+        cpu.memory.write_byte(Addr(0x102), 0xCB);
+        cpu.memory.write_byte(Addr(0x103), 0x46); // BIT 0,(HL)
+        cpu.step();
+        assert_eq!(cpu.total_cycles, 20);
+
+        cpu.memory.write_byte(Addr(0x104), 0xCB);
+        cpu.memory.write_byte(Addr(0x105), 0x7E); // BIT 7,(HL)
+        cpu.step();
+        assert_eq!(cpu.total_cycles, 32);
+    }
+
+    #[test]
     fn test_conditional_jr_cycle_selection() {
         let mut cpu = setup();
         cpu.memory.write_byte(Addr(0x100), 0x20); // JR NZ,e8

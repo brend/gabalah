@@ -502,10 +502,10 @@ impl Cpu {
         }
 
         self.registers.pc = self.registers.pc.wrapping_add(2);
-        if z == 6 {
-            16
-        } else {
-            8
+        match (x, z) {
+            (1, 6) => 12, // BIT b,(HL)
+            (_, 6) => 16, // rotate/shift/res/set on (HL)
+            _ => 8,
         }
     }
 }

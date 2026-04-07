@@ -27,6 +27,7 @@ const SCALE: f64 = 3.0;
 // ~70,224 cycles per frame at 4.194304 MHz / 59.7275 fps
 const CYCLES_PER_FRAME: usize = 70224;
 const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706); // 70224 / 4_194_304 s
+const INTERRUPT_SERVICE_CYCLES: usize = 20;
 
 pub fn run_loop(
     cpu: Cpu,
@@ -245,10 +246,14 @@ impl Emulator {
 
     /// Runs the CPU for approximately one frame's worth of cycles.
     fn step_frame(&mut self) {
-        let mut cycles_this_frame = 0;
-        while cycles_this_frame < CYCLES_PER_FRAME {
+        self.step_cycles(CYCLES_PER_FRAME);
+    }
+
+    fn step_cycles(&mut self, cycle_budget: usize) {
+        let mut cycles_this_step = 0;
+        while cycles_this_step < cycle_budget {
             let cycles = self.cpu.step();
-            cycles_this_frame += cycles;
+            cycles_this_step += cycles;
             self.tick_lcd(cycles);
 
             if self.cpu.memory.tick(cycles as u32) {
@@ -256,7 +261,13 @@ impl Emulator {
             }
 
             if self.is_interrupt_pending() {
-                self.interrupt()
+                let interrupt_cycles = self.interrupt();
+                cycles_this_step += interrupt_cycles;
+                self.tick_lcd(interrupt_cycles);
+
+                if self.cpu.memory.tick(interrupt_cycles as u32) {
+                    self.cpu.set_if(self.cpu.get_if() | 0x04);
+                }
             }
         }
     }
@@ -329,7 +340,7 @@ impl Emulator {
         self.cpu.registers.ime && (self.cpu.get_ie() & self.cpu.get_if()) != 0
     }
 
-    fn interrupt(&mut self) {
+    fn interrupt(&mut self) -> usize {
         self.cpu.registers.ime = false;
         let if_contents = self.cpu.get_if();
         let ie_contents = self.cpu.get_ie();
@@ -339,13 +350,14 @@ impl Emulator {
                 self.cpu.set_if(if_contents & !(1 << bit));
                 let vector = 0x0040u16 + (bit as u16) * 8;
                 self.call(vector);
-                return;
+                self.cpu.total_cycles += INTERRUPT_SERVICE_CYCLES as u64;
+                return INTERRUPT_SERVICE_CYCLES;
             }
         }
+        0
     }
 
     fn call(&mut self, vector: u16) {
-        // Emulation remark: this should cost 20 cycles
         self.cpu.memory.write_word(
             Addr(self.cpu.registers.sp.wrapping_sub(2)),
             self.cpu.registers.pc,
@@ -418,5 +430,47 @@ impl Emulator {
             oam_path.display()
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interrupt_services_pending_request_with_20_cycles() {
+        let mut cpu = Cpu::new();
+        cpu.registers.pc = 0x1234;
+        cpu.registers.sp = 0xFFFE;
+        cpu.registers.ime = true;
+        cpu.memory.write_byte(Addr(0xFFFF), 0x04); // IE: timer
+        cpu.set_if(0x04); // IF: timer pending
+
+        let mut emulator = Emulator::new(cpu);
+        let cycles = emulator.interrupt();
+
+        assert_eq!(cycles, INTERRUPT_SERVICE_CYCLES);
+        assert_eq!(emulator.cpu.total_cycles, INTERRUPT_SERVICE_CYCLES as u64);
+        assert!(!emulator.cpu.registers.ime);
+        assert_eq!(emulator.cpu.registers.pc, 0x0050);
+        assert_eq!(emulator.cpu.registers.sp, 0xFFFC);
+        assert_eq!(emulator.cpu.memory.read_word(Addr(0xFFFC)), 0x1234);
+        assert_eq!(emulator.cpu.get_if() & 0x04, 0);
+    }
+
+    #[test]
+    fn bounded_step_counts_interrupt_cycles_for_timer_and_ppu() {
+        let mut cpu = Cpu::new();
+        cpu.registers.ime = true;
+        cpu.memory.write_byte(Addr(0xFFFF), 0x01); // IE: vblank
+        cpu.set_if(0x01); // IF: vblank pending
+        cpu.memory.write_byte(Addr(0xFF07), 0x05); // TAC: enabled, 16-cycle timer
+
+        let mut emulator = Emulator::new(cpu);
+        emulator.step_cycles(4);
+
+        assert_eq!(emulator.cpu.total_cycles, 24);
+        assert_eq!(emulator.cpu.memory.read_byte(Addr(0xFF05)), 1);
+        assert_eq!(emulator.ppu_line_cycles, 24);
     }
 }
