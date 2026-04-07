@@ -6,6 +6,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+#[cfg(target_os = "windows")]
+use wgpu::Backends;
 use winit::window::Window;
 
 const BUILTIN_SHADER_SOURCE: &str = include_str!("shaders/crt.wgsl");
@@ -89,6 +91,14 @@ impl<'win> WgpuShaderBackend<'win> {
     ) -> UiResult<Self> {
         let shader_options = shader.clamped();
 
+        #[cfg(target_os = "windows")]
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            // Keep the custom shader backend aligned with the pixels backend:
+            // some Windows DX12 drivers fail swapchain render-target transitions.
+            backends: Backends::VULKAN | Backends::GL,
+            ..Default::default()
+        });
+        #[cfg(not(target_os = "windows"))]
         let instance = wgpu::Instance::default();
         let surface = instance.create_surface(window)?;
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
