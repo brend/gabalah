@@ -25,7 +25,34 @@ Gabalah reads optional graphics settings from `config.json` in the project root.
 ```json
 {
   "graphics_backend": "wgpu_shader",
+  "window": {
+    "scale": 3.0
+  },
+  "controls": {
+    "joypad": {
+      "up": "up",
+      "down": "down",
+      "left": "left",
+      "right": "right",
+      "a": "z",
+      "b": "x",
+      "select": "right_shift",
+      "start": "enter"
+    },
+    "hotkeys": {
+      "reload_graphics_config": "r",
+      "previous_shader": "q",
+      "next_shader": "e",
+      "debug_frame_dump": "f9",
+      "exit": "escape"
+    }
+  },
+  "debug_dump": {
+    "enabled": true,
+    "output_directory": "debug_dumps"
+  },
   "shader": {
+    "directory": "shaders",
     "scanline_strength": 0.22,
     "curvature": 0.10,
     "mode": "palette_mutation",
@@ -40,6 +67,9 @@ Supported values for `"graphics_backend"`:
 - `"pixels"`: existing `pixels` presentation path
 - `"wgpu_shader"`: WGSL runtime shader-library backend
 
+`"window.scale"` controls the initial window size multiplier. It must be a finite number greater
+than `0`. If omitted, Gabalah uses `3.0`.
+
 Supported values for `"shader.mode"`:
 
 - `"classic"`
@@ -50,9 +80,17 @@ Supported values for `"shader.mode"`:
 `"shader.mode"` and `"shader.color_intensity"` are passed as uniforms to the active shader.
 How they are interpreted depends on that shader file.
 
-Runtime WGSL shaders are loaded from `./shaders` (project root). Every file must provide
+Runtime WGSL shaders are loaded from `"shader.directory"` and default to `./shaders` in the
+project root. Every file must provide
 `vs_main`/`fs_main` and the expected texture/sampler/uniform bindings.
 `"shader.active_file"` selects the preferred shader filename and is updated when cycling shaders.
+
+`"controls"` is optional. If omitted, Gabalah keeps the current defaults shown above. Supported key
+names include letters, digits, arrows, `enter`, `escape`, `tab`, `space`, `left_shift`,
+`right_shift`, `left_ctrl`, `right_ctrl`, `left_alt`, `right_alt`, and `f1` through `f12`.
+
+`"debug_dump.enabled"` controls whether the dump hotkey can queue a capture.
+`"debug_dump.output_directory"` controls where frame dumps are written.
 
 Bundled runtime shaders:
 
@@ -62,26 +100,27 @@ Bundled runtime shaders:
 - `no_effect.wgsl`: passthrough (use this to effectively disable shader effects)
 - `wiggle_ripple.wgsl`: per-pixel ripple displacement with a soft, pleasing wobble
 
-Press `R` while running to reload shader settings from `config.json` and rescan `./shaders`
-without restarting.
+Press `R` while running to reload shader settings, debug dump settings, and rescan the configured
+shader directory without restarting.
 Changing `"graphics_backend"` still requires restarting the app.
 
 ### Controls
 
-- D-Pad: Arrow keys
-- A: `Z`
-- B: `X`
-- Select: Right Shift
-- Start: Enter
-- Reload graphics config: `R`
-- Previous shader: `Q`
-- Next shader: `E`
-- Debug frame dump: `F9`
+- D-Pad: configurable, defaults to Arrow keys
+- A: configurable, defaults to `Z`
+- B: configurable, defaults to `X`
+- Select: configurable, defaults to Right Shift
+- Start: configurable, defaults to Enter
+- Reload graphics config: configurable, defaults to `R`
+- Previous shader: configurable, defaults to `Q`
+- Next shader: configurable, defaults to `E`
+- Debug frame dump: configurable, defaults to `F9`
+- Exit: configurable, defaults to `Escape`
 
 ### Debug Frame Dumps
 
 Press `F9` while the emulator is running to dump the current frame and PPU state
-to `debug_dumps/`:
+to the configured debug dump directory:
 
 - `frame_XXXX.ppm` — rendered frame image
 - `frame_XXXX.txt` — key LCD/interrupt registers

@@ -367,11 +367,19 @@ mod tests {
 
         // screen x 0..4: bg_x 252..255 → tile col 31 → shade 3
         for x in 0..4 {
-            assert_eq!(pixel(&screen, x, 0), GB_COLORS[3], "x={x} should be tile col 31");
+            assert_eq!(
+                pixel(&screen, x, 0),
+                GB_COLORS[3],
+                "x={x} should be tile col 31"
+            );
         }
         // screen x 4..12: bg_x 0..7 → tile col 0 → shade 1
         for x in 4..12 {
-            assert_eq!(pixel(&screen, x, 0), GB_COLORS[1], "x={x} should be tile col 0");
+            assert_eq!(
+                pixel(&screen, x, 0),
+                GB_COLORS[1],
+                "x={x} should be tile col 0"
+            );
         }
     }
 
@@ -527,7 +535,16 @@ mod tests {
         write_tile(
             &mut ram,
             0x8010,
-            [(0b1000_0000, 0b1000_0000), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0)],
+            [
+                (0b1000_0000, 0b1000_0000),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+                (0, 0),
+            ],
         );
 
         ram[0xFE00] = 24; // Y: screen row 8

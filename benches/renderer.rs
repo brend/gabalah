@@ -11,7 +11,7 @@ fn make_ram() -> Vec<u8> {
     // Mild scroll so tile fetches aren't all tile 0
     ram[0xFF42] = 17; // SCY
     ram[0xFF43] = 23; // SCX
-    // Populate a few tiles with non-zero data so rendering isn't trivially empty
+                      // Populate a few tiles with non-zero data so rendering isn't trivially empty
     for i in 0..16usize {
         let addr = 0x8000 + i * 16;
         for row in 0..8usize {
@@ -28,7 +28,7 @@ fn make_ram() -> Vec<u8> {
     // One sprite on-screen
     ram[0xFE00] = 24; // Y: screen row 8
     ram[0xFE01] = 16; // X: screen col 8
-    ram[0xFE02] = 1;  // tile index 1
+    ram[0xFE02] = 1; // tile index 1
     ram
 }
 

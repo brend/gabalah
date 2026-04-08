@@ -33,7 +33,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut cpu = Cpu::new();
     cpu.load_rom(rom);
     let (backend_kind, backend_options) = config::load_graphics_settings()?;
-    app::run_loop(cpu, backend_kind, backend_options)
+    let window_scale = config::load_window_scale()?;
+    let controls = config::load_controls()?;
+    let debug_dump_settings = config::load_debug_dump_settings()?;
+    app::run_loop(
+        cpu,
+        backend_kind,
+        backend_options,
+        window_scale,
+        controls,
+        debug_dump_settings,
+    )
 }
 
 fn read_rom() -> Result<Vec<u8>, Box<dyn std::error::Error>> {

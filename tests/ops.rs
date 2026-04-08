@@ -233,10 +233,7 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.registers.hl(), 0x1000);
-        assert_eq!(
-            cpu.registers.f,
-            ZERO_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK
-        );
+        assert_eq!(cpu.registers.f, ZERO_FLAG_BITMASK | HALF_CARRY_FLAG_BITMASK);
     }
 
     #[test]

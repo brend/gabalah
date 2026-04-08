@@ -11,7 +11,6 @@ use wgpu::Backends;
 use winit::window::Window;
 
 const BUILTIN_SHADER_SOURCE: &str = include_str!("shaders/crt.wgsl");
-const SHADER_DIRECTORY: &str = "shaders";
 const BUILTIN_SHADER_LABEL: &str = "builtin-crt";
 const REQUIRED_UNIFORM_FIELDS: usize = 8;
 
@@ -79,6 +78,7 @@ pub struct WgpuShaderBackend<'win> {
     shader_programs: Vec<ShaderProgram>,
     active_shader_index: usize,
     shader_options: ShaderOptions,
+    shader_directory: PathBuf,
     start_time: Instant,
 }
 
@@ -87,9 +87,9 @@ impl<'win> WgpuShaderBackend<'win> {
         width: u32,
         height: u32,
         window: &'win Window,
-        shader: ShaderOptions,
+        options: GraphicsOptions,
     ) -> UiResult<Self> {
-        let shader_options = shader.clamped();
+        let shader_options = options.shader.clamped();
 
         #[cfg(target_os = "windows")]
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -256,6 +256,7 @@ impl<'win> WgpuShaderBackend<'win> {
             shader_programs: Vec::new(),
             active_shader_index: 0,
             shader_options,
+            shader_directory: options.shader_directory,
             start_time: Instant::now(),
         };
 
@@ -370,7 +371,7 @@ impl<'win> WgpuShaderBackend<'win> {
     ) -> UiResult<Option<String>> {
         let previous_active = self.active_shader_file().map(str::to_string);
 
-        let shader_sources = load_runtime_shaders(Path::new(SHADER_DIRECTORY))?;
+        let shader_sources = load_runtime_shaders(&self.shader_directory)?;
         let mut shader_programs = Vec::new();
 
         for shader_source in shader_sources {
@@ -387,7 +388,7 @@ impl<'win> WgpuShaderBackend<'win> {
         if shader_programs.is_empty() {
             warn!(
                 "No valid runtime shaders found in '{}'; using built-in fallback",
-                SHADER_DIRECTORY
+                self.shader_directory.display()
             );
             shader_programs.push(self.compile_shader_program(
                 BUILTIN_SHADER_SOURCE,
@@ -515,6 +516,7 @@ impl GraphicsBackend for WgpuShaderBackend<'_> {
     }
 
     fn reload_options(&mut self, options: GraphicsOptions) -> UiResult<()> {
+        self.shader_directory = options.shader_directory;
         self.shader_options = options.shader.clamped();
         if let Some(ref active_file) = self.shader_options.active_file.clone() {
             if !self.set_active_shader_file(active_file) {
@@ -755,6 +757,13 @@ mod tests {
         assert_eq!(names, vec!["a.wgsl", "b.wgsl"]);
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn returns_empty_when_shader_directory_is_missing() {
+        let dir = unique_temp_dir("shader_missing");
+        let files = discover_shader_files(&dir).expect("missing shader dir should be allowed");
+        assert!(files.is_empty());
     }
 
     fn unique_temp_dir(label: &str) -> PathBuf {

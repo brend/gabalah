@@ -3,13 +3,13 @@
 
 use super::renderer;
 use crate::config;
+use crate::config::{Controls, DebugDumpSettings};
 use crate::cpu::Cpu;
 use crate::memory::Addr;
 use crate::ui::{self, GraphicsBackendKind, GraphicsOptions};
 use log::{debug, error, warn};
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use winit::{
     dpi::LogicalSize,
@@ -22,8 +22,6 @@ use winit_input_helper::WinitInputHelper;
 
 const WIDTH: u32 = 160;
 const HEIGHT: u32 = 144;
-const SCALE: f64 = 3.0;
-
 // ~70,224 cycles per frame at 4.194304 MHz / 59.7275 fps
 const CYCLES_PER_FRAME: usize = 70224;
 const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706); // 70224 / 4_194_304 s
@@ -33,6 +31,9 @@ pub fn run_loop(
     cpu: Cpu,
     backend_kind: GraphicsBackendKind,
     backend_options: GraphicsOptions,
+    window_scale: f64,
+    controls: Controls,
+    debug_dump_settings: DebugDumpSettings,
 ) -> ui::UiResult<()> {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
@@ -40,7 +41,8 @@ pub fn run_loop(
 
     let window = {
         let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
-        let scaled_size = LogicalSize::new(WIDTH as f64 * SCALE, HEIGHT as f64 * SCALE);
+        let scaled_size =
+            LogicalSize::new(WIDTH as f64 * window_scale, HEIGHT as f64 * window_scale);
         WindowBuilder::new()
             .with_title("Gabalah")
             .with_inner_size(scaled_size)
@@ -52,7 +54,7 @@ pub fn run_loop(
     let mut graphics = ui::create_backend(backend_kind, WIDTH, HEIGHT, &window, backend_options)?;
     debug!("Using graphics backend '{}'", backend_kind.as_str());
 
-    let mut emulator = Emulator::new(cpu);
+    let mut emulator = Emulator::new(cpu, debug_dump_settings);
     let mut last_frame = Instant::now();
 
     let res = event_loop.run(|event, elwt| {
@@ -73,7 +75,7 @@ pub fn run_loop(
         }
 
         if input.update(&event) {
-            if input.key_pressed(KeyCode::Escape) || input.close_requested() {
+            if input.key_pressed(controls.hotkeys.exit) || input.close_requested() {
                 elwt.exit();
                 return;
             }
@@ -82,14 +84,14 @@ pub fn run_loop(
             // Direction bits: 0=Right, 1=Left, 2=Up, 3=Down
             // Action bits:    0=A,     1=B,    2=Select, 3=Start
             let buttons: [(KeyCode, bool, u8); 8] = [
-                (KeyCode::ArrowRight, false, 0x01),
-                (KeyCode::ArrowLeft, false, 0x02),
-                (KeyCode::ArrowUp, false, 0x04),
-                (KeyCode::ArrowDown, false, 0x08),
-                (KeyCode::KeyZ, true, 0x01),
-                (KeyCode::KeyX, true, 0x02),
-                (KeyCode::ShiftRight, true, 0x04),
-                (KeyCode::Enter, true, 0x08),
+                (controls.joypad.right, false, 0x01),
+                (controls.joypad.left, false, 0x02),
+                (controls.joypad.up, false, 0x04),
+                (controls.joypad.down, false, 0x08),
+                (controls.joypad.a, true, 0x01),
+                (controls.joypad.b, true, 0x02),
+                (controls.joypad.select, true, 0x04),
+                (controls.joypad.start, true, 0x08),
             ];
             let mut any_newly_pressed = false;
             for (key, is_action, bit) in buttons {
@@ -112,11 +114,12 @@ pub fn run_loop(
             if any_newly_pressed {
                 emulator.cpu.raise_if(0x10);
             }
-            if input.key_pressed(KeyCode::F9) {
+            if input.key_pressed(controls.hotkeys.debug_frame_dump) {
                 emulator.request_dump();
                 window.request_redraw();
             }
-            if backend_kind == GraphicsBackendKind::WgpuShader && input.key_pressed(KeyCode::KeyE)
+            if backend_kind == GraphicsBackendKind::WgpuShader
+                && input.key_pressed(controls.hotkeys.next_shader)
             {
                 match graphics.cycle_shader_next() {
                     Ok(active_shader_file) => {
@@ -133,7 +136,7 @@ pub fn run_loop(
                 }
             }
             if backend_kind == GraphicsBackendKind::WgpuShader
-                && input.key_pressed(KeyCode::KeyQ)
+                && input.key_pressed(controls.hotkeys.previous_shader)
             {
                 match graphics.cycle_shader_prev() {
                     Ok(active_shader_file) => {
@@ -149,9 +152,12 @@ pub fn run_loop(
                     }
                 }
             }
-            if input.key_pressed(KeyCode::KeyR) {
-                match config::load_graphics_settings() {
-                    Ok((configured_backend, configured_options)) => {
+            if input.key_pressed(controls.hotkeys.reload_graphics_config) {
+                match (
+                    config::load_graphics_settings(),
+                    config::load_debug_dump_settings(),
+                ) {
+                    (Ok((configured_backend, configured_options)), Ok(configured_debug_dump)) => {
                         if configured_backend != backend_kind {
                             warn!(
                                 "config reload ignored backend change: running='{}' configured='{}'",
@@ -159,6 +165,7 @@ pub fn run_loop(
                                 configured_backend.as_str()
                             );
                         }
+                        emulator.reload_debug_dump_settings(configured_debug_dump);
                         let preferred_active_file =
                             configured_options.shader.active_file.clone();
                         if let Err(err) = graphics.reload_options(configured_options) {
@@ -181,8 +188,11 @@ pub fn run_loop(
                         debug!("Reloaded graphics options from config.json");
                         window.request_redraw();
                     }
-                    Err(err) => {
+                    (Err(err), _) => {
                         log_error("config.load_graphics_settings", err.as_ref());
+                    }
+                    (_, Err(err)) => {
+                        log_error("config.load_debug_dump_settings", err.as_ref());
                     }
                 }
             }
@@ -211,7 +221,7 @@ pub fn run_loop(
 }
 
 pub fn run_headless(cpu: Cpu, frames: usize) -> Vec<u8> {
-    let mut emulator = Emulator::new(cpu);
+    let mut emulator = Emulator::new(cpu, DebugDumpSettings::default());
     for _ in 0..frames {
         emulator.step_frame();
     }
@@ -232,15 +242,17 @@ struct Emulator {
     ppu_line_cycles: usize,
     dump_next_frame: bool,
     dump_index: usize,
+    debug_dump_settings: DebugDumpSettings,
 }
 
 impl Emulator {
-    fn new(cpu: Cpu) -> Self {
+    fn new(cpu: Cpu, debug_dump_settings: DebugDumpSettings) -> Self {
         Self {
             cpu,
             ppu_line_cycles: 0,
             dump_next_frame: false,
             dump_index: 0,
+            debug_dump_settings,
         }
     }
 
@@ -373,7 +385,18 @@ impl Emulator {
     }
 
     fn request_dump(&mut self) {
+        if !self.debug_dump_settings.enabled {
+            debug!("Debug dump requested, but debug_dump.enabled is false");
+            return;
+        }
         self.dump_next_frame = true;
+    }
+
+    fn reload_debug_dump_settings(&mut self, settings: DebugDumpSettings) {
+        self.debug_dump_settings = settings;
+        if !self.debug_dump_settings.enabled {
+            self.dump_next_frame = false;
+        }
     }
 
     fn maybe_dump_frame(&mut self, screen: &mut [u8]) {
@@ -387,7 +410,7 @@ impl Emulator {
     }
 
     fn dump_frame_artifacts(&mut self, screen: &[u8]) -> std::io::Result<()> {
-        let out_dir = PathBuf::from("debug_dumps");
+        let out_dir = self.debug_dump_settings.output_directory.clone();
         fs::create_dir_all(&out_dir)?;
 
         let idx = self.dump_index;
@@ -447,7 +470,7 @@ mod tests {
         cpu.memory.write_byte(Addr(0xFFFF), 0x04); // IE: timer
         cpu.raise_if(0x04); // IF: timer pending
 
-        let mut emulator = Emulator::new(cpu);
+        let mut emulator = Emulator::new(cpu, DebugDumpSettings::default());
         let cycles = emulator.interrupt();
 
         assert_eq!(cycles, INTERRUPT_SERVICE_CYCLES);
@@ -467,7 +490,7 @@ mod tests {
         cpu.raise_if(0x01); // IF: vblank pending
         cpu.memory.write_byte(Addr(0xFF07), 0x05); // TAC: enabled, 16-cycle timer
 
-        let mut emulator = Emulator::new(cpu);
+        let mut emulator = Emulator::new(cpu, DebugDumpSettings::default());
         emulator.step_cycles(4);
 
         assert_eq!(emulator.cpu.total_cycles, 24);

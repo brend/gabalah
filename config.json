@@ -1,6 +1,33 @@
 {
   "graphics_backend": "wgpu_shader",
+  "window": {
+    "scale": 3.0
+  },
+  "controls": {
+    "joypad": {
+      "up": "up",
+      "down": "down",
+      "left": "left",
+      "right": "right",
+      "a": "z",
+      "b": "x",
+      "select": "right_shift",
+      "start": "enter"
+    },
+    "hotkeys": {
+      "reload_graphics_config": "r",
+      "previous_shader": "q",
+      "next_shader": "e",
+      "debug_frame_dump": "f9",
+      "exit": "escape"
+    }
+  },
+  "debug_dump": {
+    "enabled": true,
+    "output_directory": "debug_dumps"
+  },
   "shader": {
+    "directory": "shaders",
     "active_file": "no_effect.wgsl",
     "color_intensity": 0.82,
     "curvature": 0.1,

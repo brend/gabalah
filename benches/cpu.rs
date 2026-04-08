@@ -52,16 +52,12 @@ fn tick_lcd(cpu: &mut Cpu, cycles: usize, ppu_line_cycles: &mut usize) {
 
 fn bench_cpu_step_nop(c: &mut Criterion) {
     let mut cpu = make_nop_cpu();
-    c.bench_function("cpu_step_nop", |b| {
-        b.iter(|| black_box(cpu.step()))
-    });
+    c.bench_function("cpu_step_nop", |b| b.iter(|| black_box(cpu.step())));
 }
 
 fn bench_cpu_step_alu(c: &mut Criterion) {
     let mut cpu = make_alu_cpu();
-    c.bench_function("cpu_step_alu", |b| {
-        b.iter(|| black_box(cpu.step()))
-    });
+    c.bench_function("cpu_step_alu", |b| b.iter(|| black_box(cpu.step())));
 }
 
 /// Full frame: ~5,852 JR dispatches + timer ticks + LCD line progression per iteration.
@@ -85,5 +81,10 @@ fn bench_step_frame(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_cpu_step_nop, bench_cpu_step_alu, bench_step_frame);
+criterion_group!(
+    benches,
+    bench_cpu_step_nop,
+    bench_cpu_step_alu,
+    bench_step_frame
+);
 criterion_main!(benches);

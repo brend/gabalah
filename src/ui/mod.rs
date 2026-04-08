@@ -1,4 +1,5 @@
 use std::error::Error as StdError;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use winit::window::Window;
@@ -124,6 +125,7 @@ impl FromStr for ShaderColorMode {
 #[derive(Debug, Clone, Default)]
 pub struct GraphicsOptions {
     pub shader: ShaderOptions,
+    pub shader_directory: PathBuf,
 }
 
 pub fn create_backend<'win>(
@@ -138,7 +140,7 @@ pub fn create_backend<'win>(
             width, height, window,
         )?)),
         GraphicsBackendKind::WgpuShader => Ok(Box::new(
-            wgpu_shader_backend::WgpuShaderBackend::new(width, height, window, options.shader)?,
+            wgpu_shader_backend::WgpuShaderBackend::new(width, height, window, options)?,
         )),
     }
 }
