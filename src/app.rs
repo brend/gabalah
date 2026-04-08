@@ -16,12 +16,17 @@ use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     keyboard::KeyCode,
-    window::WindowBuilder,
+    window::{Icon, WindowBuilder},
 };
 use winit_input_helper::WinitInputHelper;
 
 const WIDTH: u32 = 160;
 const HEIGHT: u32 = 144;
+const WINDOW_ICON_SIDE: u32 = 64;
+const WINDOW_ICON_RGBA: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/icons/window-icon-64.rgba"
+));
 // ~70,224 cycles per frame at 4.194304 MHz / 59.7275 fps
 const CYCLES_PER_FRAME: usize = 70224;
 const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706); // 70224 / 4_194_304 s
@@ -47,6 +52,7 @@ pub fn run_loop(
             .with_title("Gabalah")
             .with_inner_size(scaled_size)
             .with_min_inner_size(size)
+            .with_window_icon(load_window_icon())
             .build(&event_loop)
             .unwrap()
     };
@@ -226,6 +232,15 @@ pub fn run_headless(cpu: Cpu, frames: usize) -> Vec<u8> {
         emulator.step_frame();
     }
     emulator.cpu.memory.serial_output.clone()
+}
+
+fn load_window_icon() -> Option<Icon> {
+    Icon::from_rgba(
+        WINDOW_ICON_RGBA.to_vec(),
+        WINDOW_ICON_SIDE,
+        WINDOW_ICON_SIDE,
+    )
+    .ok()
 }
 
 fn log_error(method_name: &str, err: &dyn std::error::Error) {

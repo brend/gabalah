@@ -2,6 +2,7 @@
 name = "gabalah"
 version = "0.1.0"
 edition = "2021"
+description = "A Game Boy emulator with shader-driven display effects."
 
 [lib]
 name = "gabalah"
@@ -42,3 +43,9 @@ harness = false
 lto = "thin"
 codegen-units = 1
 panic = "abort"
+
+[package.metadata.bundle]
+name = "Gabalah"
+identifier = "io.github.philipp.gabalah"
+icon = ["assets/icons/gabalah.ico", "assets/icons/icon.iconset/*.png"]
+short_description = "A Game Boy emulator with shader-driven display effects."
