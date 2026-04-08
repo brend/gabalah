@@ -15,7 +15,17 @@ const GB_COLORS: [[u8; 4]; 4] = [
 /// Renders the background layer into `screen` (RGBA, 160×144).
 /// `ram` must be a 65536-byte slice (the full Game Boy address space).
 /// Reads SCX/SCY scroll registers and respects LCDC tile map / data area bits.
+#[allow(dead_code)]
 pub fn render_frame(ram: &[u8], screen: &mut [u8]) {
+    let mut bg_opaque = vec![false; WIDTH as usize * HEIGHT as usize];
+    render_frame_with_bg_opaque(ram, screen, &mut bg_opaque);
+}
+
+/// Renders a frame while reusing a caller-provided opacity buffer.
+/// `bg_opaque` must have one entry per screen pixel.
+pub fn render_frame_with_bg_opaque(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
+    debug_assert_eq!(bg_opaque.len(), WIDTH as usize * HEIGHT as usize);
+
     let lcdc = ram[0xFF40];
     if (lcdc & 0x80) == 0 {
         for pixel in screen.chunks_exact_mut(4) {
@@ -24,19 +34,52 @@ pub fn render_frame(ram: &[u8], screen: &mut [u8]) {
         return;
     }
 
-    // bg_opaque tracks which pixels have a non-zero BG/window palette index,
-    // used by render_obj to resolve sprite priority (attribute bit 7).
-    let mut bg_opaque = vec![false; WIDTH as usize * HEIGHT as usize];
+    let check_priority = has_visible_priority_obj(ram, lcdc);
 
     // On DMG, LCDC bit 0 gates both BG and Window.
     if (lcdc & 0x01) != 0 {
-        render_bg(ram, screen, &mut bg_opaque);
-        render_window(ram, screen, &mut bg_opaque);
+        if check_priority {
+            render_bg::<true>(ram, screen, bg_opaque);
+            render_window::<true>(ram, screen, bg_opaque);
+        } else {
+            render_bg::<false>(ram, screen, bg_opaque);
+            render_window::<false>(ram, screen, bg_opaque);
+        }
+    } else if check_priority {
+        bg_opaque.fill(false);
     }
-    render_obj(ram, screen, &bg_opaque);
+
+    if check_priority {
+        render_obj::<true>(ram, screen, bg_opaque);
+    } else {
+        render_obj::<false>(ram, screen, &[]);
+    }
 }
 
-fn render_obj(ram: &[u8], screen: &mut [u8], bg_opaque: &[bool]) {
+fn has_visible_priority_obj(ram: &[u8], lcdc: u8) -> bool {
+    if (lcdc & 0x02) == 0 {
+        return false;
+    }
+
+    let obj_height = if (lcdc & 0x04) != 0 { 16 } else { 8 };
+    let mut obj_addr = 0xFE00;
+    while obj_addr <= 0xFE9F {
+        let tile_y = ram[obj_addr] as i16 - 16;
+        let tile_x = ram[obj_addr + 1] as i16 - 8;
+        let attributes = ram[obj_addr + 3];
+        let visible = tile_y < HEIGHT as i16
+            && tile_y + obj_height as i16 > 0
+            && tile_x < WIDTH as i16
+            && tile_x + 8 > 0;
+        if (attributes & 0x80) != 0 && visible {
+            return true;
+        }
+        obj_addr += 4;
+    }
+    false
+}
+
+fn render_obj<const CHECK_PRIORITY: bool>(ram: &[u8], screen: &mut [u8], bg_opaque: &[bool]) {
     let lcdc = ram[0xFF40];
 
     // LCDC bit 1: OBJ (sprite) enable
@@ -94,7 +137,7 @@ fn render_obj(ram: &[u8], screen: &mut [u8], bg_opaque: &[bool]) {
                 }
 
                 // Priority bit: sprite is behind non-transparent BG/window pixels.
-                if priority && bg_opaque[screen_y * WIDTH as usize + screen_x] {
+                if CHECK_PRIORITY && priority && bg_opaque[screen_y * WIDTH as usize + screen_x] {
                     continue;
                 }
 
@@ -116,7 +159,7 @@ fn tile_address(tile_index: u8, signed_addressing: bool) -> usize {
     }
 }
 
-fn render_bg(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
+fn render_bg<const TRACK_OPAQUE: bool>(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
     let lcdc = ram[0xFF40];
     let bgp = ram[0xFF47];
     let scy = ram[0xFF42] as usize;
@@ -154,13 +197,15 @@ fn render_bg(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
             let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
 
             let flat = screen_y * WIDTH as usize + screen_x;
-            bg_opaque[flat] = palette_index != 0;
+            if TRACK_OPAQUE {
+                bg_opaque[flat] = palette_index != 0;
+            }
             screen[flat * 4..flat * 4 + 4].copy_from_slice(&GB_COLORS[shade]);
         }
     }
 }
 
-fn render_window(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
+fn render_window<const TRACK_OPAQUE: bool>(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
     let lcdc = ram[0xFF40];
     if (lcdc & 0x20) == 0 {
         return;
@@ -208,7 +253,9 @@ fn render_window(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
             let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
 
             let flat = screen_y * WIDTH as usize + screen_x;
-            bg_opaque[flat] = palette_index != 0;
+            if TRACK_OPAQUE {
+                bg_opaque[flat] = palette_index != 0;
+            }
             screen[flat * 4..flat * 4 + 4].copy_from_slice(&GB_COLORS[shade]);
         }
     }
@@ -521,6 +568,34 @@ mod tests {
             pixel(&screen, 8, 8),
             GB_COLORS[0],
             "transparent sprite must not overwrite BG"
+        );
+    }
+
+    #[test]
+    fn sprite_priority_bit_defers_to_non_zero_bg_pixel() {
+        let mut ram = blank_ram();
+        ram[0xFF40] = 0x93; // LCDC: display on, BG on, OBJ on, unsigned addressing
+        ram[0xFF47] = 0xE4; // BGP: identity
+        ram[0xFF48] = 0xE4; // OBP0: identity
+
+        // Background tile at screen tile row 1, col 1: solid palette index 1.
+        ram[0x9800 + 32 + 1] = 1;
+        write_tile(&mut ram, 0x8010, [(0xFF, 0x00); 8]);
+
+        // Sprite tile 2: solid palette index 3, but with priority bit set.
+        write_tile(&mut ram, 0x8020, [(0xFF, 0xFF); 8]);
+        ram[0xFE00] = 24; // Y: screen row 8
+        ram[0xFE01] = 16; // X: screen col 8
+        ram[0xFE02] = 2; // tile index
+        ram[0xFE03] = 0x80; // priority behind non-zero BG
+
+        let mut screen = blank_screen();
+        render_frame(&ram, &mut screen);
+
+        assert_eq!(
+            pixel(&screen, 8, 8),
+            GB_COLORS[1],
+            "priority sprite must stay behind non-transparent BG"
         );
     }
 

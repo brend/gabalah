@@ -240,6 +240,7 @@ fn log_error(method_name: &str, err: &dyn std::error::Error) {
 struct Emulator {
     cpu: Cpu,
     ppu_line_cycles: usize,
+    bg_opaque: Vec<bool>,
     dump_next_frame: bool,
     dump_index: usize,
     debug_dump_settings: DebugDumpSettings,
@@ -250,6 +251,7 @@ impl Emulator {
         Self {
             cpu,
             ppu_line_cycles: 0,
+            bg_opaque: vec![false; (WIDTH * HEIGHT) as usize],
             dump_next_frame: false,
             dump_index: 0,
             debug_dump_settings,
@@ -380,8 +382,12 @@ impl Emulator {
     }
 
     /// Renders the current emulator state into the pixel buffer.
-    fn draw(&self, screen: &mut [u8]) {
-        renderer::render_frame(self.cpu.memory.as_slice(), screen);
+    fn draw(&mut self, screen: &mut [u8]) {
+        renderer::render_frame_with_bg_opaque(
+            self.cpu.memory.as_slice(),
+            screen,
+            &mut self.bg_opaque,
+        );
     }
 
     fn request_dump(&mut self) {

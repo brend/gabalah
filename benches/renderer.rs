@@ -32,13 +32,54 @@ fn make_ram() -> Vec<u8> {
     ram
 }
 
-fn bench_render_frame(c: &mut Criterion) {
+fn make_priority_ram() -> Vec<u8> {
+    let mut ram = make_ram();
+    ram[0xFE03] = 0x80; // sprite priority behind non-zero BG
+    ram
+}
+
+fn bench_render_frame_alloc(c: &mut Criterion) {
     let ram = make_ram();
     let mut screen = vec![0u8; renderer::WIDTH as usize * renderer::HEIGHT as usize * 4];
-    c.bench_function("render_frame", |b| {
+    c.bench_function("render_frame_alloc", |b| {
         b.iter(|| renderer::render_frame(black_box(&ram), black_box(&mut screen)))
     });
 }
 
-criterion_group!(benches, bench_render_frame);
+fn bench_render_frame_reuse(c: &mut Criterion) {
+    let ram = make_ram();
+    let mut screen = vec![0u8; renderer::WIDTH as usize * renderer::HEIGHT as usize * 4];
+    let mut bg_opaque = vec![false; renderer::WIDTH as usize * renderer::HEIGHT as usize];
+    c.bench_function("render_frame_reuse", |b| {
+        b.iter(|| {
+            renderer::render_frame_with_bg_opaque(
+                black_box(&ram),
+                black_box(&mut screen),
+                &mut bg_opaque,
+            )
+        })
+    });
+}
+
+fn bench_render_frame_reuse_priority(c: &mut Criterion) {
+    let ram = make_priority_ram();
+    let mut screen = vec![0u8; renderer::WIDTH as usize * renderer::HEIGHT as usize * 4];
+    let mut bg_opaque = vec![false; renderer::WIDTH as usize * renderer::HEIGHT as usize];
+    c.bench_function("render_frame_reuse_priority", |b| {
+        b.iter(|| {
+            renderer::render_frame_with_bg_opaque(
+                black_box(&ram),
+                black_box(&mut screen),
+                &mut bg_opaque,
+            )
+        })
+    });
+}
+
+criterion_group!(
+    benches,
+    bench_render_frame_alloc,
+    bench_render_frame_reuse,
+    bench_render_frame_reuse_priority
+);
 criterion_main!(benches);
