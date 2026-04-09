@@ -18,6 +18,20 @@ Gabalah expects a path to a ROM file as its single command line argument.
 $ cargo run path/to/some_rom.gb
 ```
 
+### Cartridge Metadata
+
+On ROM load, Gabalah parses the Game Boy cartridge header (`0x0100..0x014F`) and stores metadata
+for later use (title, licensee, CGB/SGB flags, cartridge type, ROM/RAM bank counts, destination,
+version, and both checksum fields).
+
+Current access points:
+
+- `Cpu::cartridge_header() -> Option<&CartridgeHeader>`
+- `Ram::cartridge_header() -> Option<&CartridgeHeader>`
+
+This currently parses and exposes checksum fields; checksum enforcement/validation is not yet
+wired into ROM load rejection logic.
+
 ### Graphics Backend Configuration
 
 Gabalah reads optional graphics settings from `config.json` in the project root.
@@ -133,6 +147,12 @@ Run the included tests with
 
 ``` sh
 $ cargo test
+```
+
+Cartridge parser tests can also be run directly with:
+
+``` sh
+$ cargo test --test cartridge
 ```
 
 ## Emulation Accuracy

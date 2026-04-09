@@ -13,7 +13,7 @@ Items are ordered by dependency. Check off items as they are done and keep `STAT
 - [x] Load ROM at `0x0000`, start PC at `0x0100`
 - [x] Correct post-boot SP (`0xFFFE`)
 - [x] Initialize post-boot DMG0 CPU and key IO defaults
-- [ ] Parse cartridge header metadata (title/type/ROM size/RAM size)
+- [x] Parse cartridge header metadata (title/type/ROM size/RAM size)
 - [ ] Add explicit cartridge abstraction type
 - [x] Add frame limiter (~59.7 fps)
 
@@ -98,6 +98,7 @@ Items are ordered by dependency. Check off items as they are done and keep `STAT
 
 - [x] Unit tests for renderer paths (BG/window/sprite baseline)
 - [x] Unit tests for memory map edge behavior
+- [x] Unit tests for cartridge header parsing and checksum validation
 - [x] Unit tests for graphics config/backend parsing and clamping
 - [x] Shader syntax smoke test for WGSL path
 - [ ] Add automated ROM acceptance harness in CI

@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-04-07
+Last updated: 2026-04-09
 
 ## What Works
 
@@ -16,6 +16,7 @@ Last updated: 2026-04-07
 
 ### Memory / IO
 - ROM loaded at `0x0000`; PC starts at `0x0100`
+- Cartridge header metadata parsed on ROM load and exposed through CPU/RAM accessors
 - ROM write-protection enabled after ROM load (`0x0000..0x7FFF` writes ignored)
 - Echo RAM mirroring (`0xE000..0xFDFF` <-> `0xC000..0xDDFF`)
 - Unusable area behavior (`0xFEA0..0xFEFF`: reads `0xFF`, writes ignored)
@@ -67,6 +68,7 @@ Last updated: 2026-04-07
 
 ### Cartridge / hardware
 - No cartridge abstraction (MBC1/MBC3/MBC5 not implemented)
+- Header checksum/global checksum are parsed but not yet enforced for ROM rejection
 - No save RAM persistence (`.sav`)
 - STOP remains a no-op
 - HALT bug behavior not fully implemented
@@ -76,8 +78,9 @@ Last updated: 2026-04-07
 
 | Area | Tests | Status |
 |---|---|---|
-| CPU core ops | 28 (`tests/ops.rs`) | passing |
-| Memory/IO/timer/joypad/DMA | 23 (`tests/cpu.rs`) | passing |
+| CPU core ops | 34 (`tests/ops.rs`) | passing |
+| Memory/IO/timer/joypad/DMA | 24 (`tests/cpu.rs`) | passing |
+| Cartridge header parser + checksum validation | 9 (`tests/cartridge.rs`) | passing |
 | Renderer (BG/window/OBJ + attributes) | 13 (`src/renderer.rs`) | passing |
 | Graphics config/backend parsing | 10 (`src/config.rs`, `src/ui/mod.rs`) | passing |
 | WGSL shader contract/discovery tests | 5 (`src/ui/wgpu_shader_backend.rs`) | passing |
