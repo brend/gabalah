@@ -79,6 +79,7 @@ Gabalah reads optional graphics settings from `config.json` in the project root.
 Supported values for `"graphics_backend"`:
 
 - `"pixels"`: existing `pixels` presentation path
+- `"terminal"`: ANSI truecolor rendering in the terminal (novelty backend)
 - `"wgpu_shader"`: WGSL runtime shader-library backend
 
 `"window.scale"` controls the initial window size multiplier. It must be a finite number greater
@@ -117,6 +118,9 @@ Bundled runtime shaders:
 Press `R` while running to reload shader settings, debug dump settings, and rescan the configured
 shader directory without restarting.
 Changing `"graphics_backend"` still requires restarting the app.
+
+The terminal backend renders into an alternate terminal screen at a fixed 80x24 grid and
+intentionally caps redraw rate for readability.
 
 ### Controls
 

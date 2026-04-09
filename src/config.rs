@@ -640,7 +640,7 @@ mod tests {
             .expect_err("invalid backend should return an error");
         let msg = err.to_string();
         assert!(msg.contains("Invalid graphics_backend"));
-        assert!(msg.contains("pixels, wgpu_shader"));
+        assert!(msg.contains("pixels, terminal, wgpu_shader"));
 
         let _ = fs::remove_file(path);
     }

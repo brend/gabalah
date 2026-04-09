@@ -5,6 +5,7 @@ use std::str::FromStr;
 use winit::window::Window;
 
 pub mod pixels_backend;
+pub mod terminal_backend;
 pub mod wgpu_shader_backend;
 
 pub type UiError = Box<dyn StdError + 'static>;
@@ -34,6 +35,7 @@ pub trait GraphicsBackend {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphicsBackendKind {
     Pixels,
+    Terminal,
     WgpuShader,
 }
 
@@ -41,6 +43,7 @@ impl GraphicsBackendKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Pixels => "pixels",
+            Self::Terminal => "terminal",
             Self::WgpuShader => "wgpu_shader",
         }
     }
@@ -53,9 +56,10 @@ impl FromStr for GraphicsBackendKind {
         let normalized = value.trim().to_ascii_lowercase();
         match normalized.as_str() {
             "pixels" => Ok(Self::Pixels),
+            "terminal" | "tty" | "ansi" => Ok(Self::Terminal),
             "wgpu_shader" | "wgpu-shader" | "wgpu" | "wgsl" => Ok(Self::WgpuShader),
             _ => Err(format!(
-                "unsupported backend '{value}'. Supported values: pixels, wgpu_shader"
+                "unsupported backend '{value}'. Supported values: pixels, terminal, wgpu_shader"
             )),
         }
     }
@@ -139,6 +143,9 @@ pub fn create_backend<'win>(
         GraphicsBackendKind::Pixels => Ok(Box::new(pixels_backend::PixelsBackend::new(
             width, height, window,
         )?)),
+        GraphicsBackendKind::Terminal => Ok(Box::new(terminal_backend::TerminalBackend::new(
+            width, height,
+        )?)),
         GraphicsBackendKind::WgpuShader => Ok(Box::new(
             wgpu_shader_backend::WgpuShaderBackend::new(width, height, window, options)?,
         )),
@@ -156,6 +163,18 @@ mod tests {
                 .parse::<GraphicsBackendKind>()
                 .expect("pixels should parse"),
             GraphicsBackendKind::Pixels
+        );
+        assert_eq!(
+            "terminal"
+                .parse::<GraphicsBackendKind>()
+                .expect("terminal should parse"),
+            GraphicsBackendKind::Terminal
+        );
+        assert_eq!(
+            "tty"
+                .parse::<GraphicsBackendKind>()
+                .expect("tty alias should parse"),
+            GraphicsBackendKind::Terminal
         );
         assert_eq!(
             "wgpu_shader"
@@ -182,7 +201,7 @@ mod tests {
         let err = "not_a_backend"
             .parse::<GraphicsBackendKind>()
             .expect_err("unknown backend should fail");
-        assert!(err.contains("pixels, wgpu_shader"));
+        assert!(err.contains("pixels, terminal, wgpu_shader"));
     }
 
     #[test]
