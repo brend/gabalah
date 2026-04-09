@@ -19,7 +19,10 @@ fn main() {
 fn embed_windows_icon() -> Result<(), Box<dyn std::error::Error>> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
-    let icon_path = manifest_dir.join("assets").join("icons").join("gabalah.ico");
+    let icon_path = manifest_dir
+        .join("assets")
+        .join("icons")
+        .join("gabalah.ico");
     let rc_path = out_dir.join("gabalah-icon.rc");
     let res_path = out_dir.join("gabalah-icon.res");
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "x86_64".to_string());
@@ -77,7 +80,7 @@ fn find_rc_exe(target_arch: &str) -> Result<PathBuf, Box<dyn std::error::Error>>
         }
     }
 
-    candidates.sort_by(|left, right| version_key(left).cmp(&version_key(right)));
+    candidates.sort_by_key(|candidate| version_key(candidate));
     candidates
         .pop()
         .ok_or_else(|| format!("Could not find rc.exe under {}", bin_root.display()).into())
