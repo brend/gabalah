@@ -11,6 +11,21 @@ const DEFAULT_WINDOW_SCALE: f64 = 3.0;
 const DEFAULT_SHADER_DIRECTORY: &str = "shaders";
 const DEFAULT_DEBUG_DUMP_DIRECTORY: &str = "debug_dumps";
 
+fn default_backend_kind() -> GraphicsBackendKind {
+    #[cfg(feature = "frontend-pixels")]
+    {
+        GraphicsBackendKind::Pixels
+    }
+    #[cfg(all(not(feature = "frontend-pixels"), feature = "frontend-wgpu"))]
+    {
+        GraphicsBackendKind::WgpuShader
+    }
+    #[cfg(all(not(feature = "frontend-pixels"), not(feature = "frontend-wgpu")))]
+    {
+        GraphicsBackendKind::Terminal
+    }
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct AppConfig {
     #[serde(default)]
@@ -180,7 +195,7 @@ fn load_graphics_settings_from_path(
                 format!("Invalid graphics_backend in {config_name}: {msg}"),
             )
         })?,
-        None => GraphicsBackendKind::Pixels,
+        None => default_backend_kind(),
     };
 
     let defaults = ShaderOptions::default();

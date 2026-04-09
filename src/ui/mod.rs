@@ -1,11 +1,15 @@
 use std::error::Error as StdError;
+#[cfg(any(not(feature = "frontend-pixels"), not(feature = "frontend-wgpu")))]
+use std::io;
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use winit::window::Window;
 
+#[cfg(feature = "frontend-pixels")]
 pub mod pixels_backend;
 pub mod terminal_backend;
+#[cfg(feature = "frontend-wgpu")]
 pub mod wgpu_shader_backend;
 
 pub type UiError = Box<dyn StdError + 'static>;
@@ -140,16 +144,46 @@ pub fn create_backend<'win>(
     options: GraphicsOptions,
 ) -> UiResult<Box<dyn GraphicsBackend + 'win>> {
     match kind {
-        GraphicsBackendKind::Pixels => Ok(Box::new(pixels_backend::PixelsBackend::new(
-            width, height, window,
-        )?)),
+        GraphicsBackendKind::Pixels => {
+            #[cfg(feature = "frontend-pixels")]
+            {
+                Ok(Box::new(pixels_backend::PixelsBackend::new(
+                    width, height, window,
+                )?))
+            }
+            #[cfg(not(feature = "frontend-pixels"))]
+            {
+                Err(feature_disabled_error("pixels backend", "frontend-pixels"))
+            }
+        }
         GraphicsBackendKind::Terminal => Ok(Box::new(terminal_backend::TerminalBackend::new(
             width, height,
         )?)),
-        GraphicsBackendKind::WgpuShader => Ok(Box::new(
-            wgpu_shader_backend::WgpuShaderBackend::new(width, height, window, options)?,
-        )),
+        GraphicsBackendKind::WgpuShader => {
+            #[cfg(feature = "frontend-wgpu")]
+            {
+                Ok(Box::new(wgpu_shader_backend::WgpuShaderBackend::new(
+                    width, height, window, options,
+                )?))
+            }
+            #[cfg(not(feature = "frontend-wgpu"))]
+            {
+                let _ = (window, options);
+                Err(feature_disabled_error(
+                    "wgpu_shader backend",
+                    "frontend-wgpu",
+                ))
+            }
+        }
     }
+}
+
+#[cfg(any(not(feature = "frontend-pixels"), not(feature = "frontend-wgpu")))]
+fn feature_disabled_error(backend_name: &str, feature: &str) -> UiError {
+    Box::new(io::Error::new(
+        io::ErrorKind::Unsupported,
+        format!("{backend_name} is disabled in this build; rebuild with `--features {feature}`"),
+    ))
 }
 
 #[cfg(test)]

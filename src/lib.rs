@@ -1,8 +1,11 @@
+#[cfg(feature = "frontend")]
 pub mod app;
 pub mod cartridge;
+#[cfg(feature = "frontend")]
 pub mod config;
 pub mod cpu;
 pub mod memory;
 pub mod renderer;
 pub mod rom_loader;
+#[cfg(feature = "frontend")]
 pub mod ui;

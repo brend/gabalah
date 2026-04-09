@@ -1,9 +1,14 @@
+#[cfg(feature = "rom-gzip")]
 use flate2::read::GzDecoder;
+#[cfg(feature = "rom-7z")]
 use sevenz_rust::{Password, SevenZReader};
 use std::fmt;
 use std::fs;
-use std::io::{self, Cursor, Read};
+use std::io;
+#[cfg(any(feature = "rom-zip", feature = "rom-gzip", feature = "rom-7z"))]
+use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
+#[cfg(feature = "rom-zip")]
 use zip::ZipArchive;
 
 const MAX_ROM_SIZE: usize = 32 * 1024;
@@ -39,6 +44,11 @@ pub enum RomLoadError {
     EntrySelectionUnsupported {
         path: PathBuf,
         format: &'static str,
+    },
+    FormatDisabled {
+        path: PathBuf,
+        format: &'static str,
+        feature: &'static str,
     },
     RomTooLarge {
         path: PathBuf,
@@ -96,6 +106,15 @@ impl fmt::Display for RomLoadError {
                 "--entry is not supported for {format} input '{}'",
                 path.to_string_lossy()
             ),
+            RomLoadError::FormatDisabled {
+                path,
+                format,
+                feature,
+            } => write!(
+                f,
+                "{format} support is disabled for input '{}'; rebuild with `--features {feature}`",
+                path.to_string_lossy()
+            ),
             RomLoadError::RomTooLarge {
                 path,
                 source,
@@ -121,9 +140,9 @@ pub fn load_rom_from_path(path: &Path, entry: Option<&str>) -> Result<Vec<u8>, R
     let format = detect_format(path, &bytes);
     let (rom, source) = match format {
         RomFormat::Raw => (bytes, "ROM file".to_string()),
-        RomFormat::Zip => load_rom_from_zip(path, &bytes, entry)?,
-        RomFormat::Gzip => load_rom_from_gzip(path, &bytes, entry)?,
-        RomFormat::SevenZip => load_rom_from_7z(path, &bytes, entry)?,
+        RomFormat::Zip => load_rom_from_zip_or_err(path, &bytes, entry)?,
+        RomFormat::Gzip => load_rom_from_gzip_or_err(path, &bytes, entry)?,
+        RomFormat::SevenZip => load_rom_from_7z_or_err(path, &bytes, entry)?,
     };
 
     validate_rom_size(path, &source, rom.len())?;
@@ -165,6 +184,67 @@ fn has_prefix(bytes: &[u8], prefix: &[u8]) -> bool {
     bytes.len() >= prefix.len() && &bytes[..prefix.len()] == prefix
 }
 
+fn load_rom_from_zip_or_err(
+    path: &Path,
+    bytes: &[u8],
+    entry: Option<&str>,
+) -> Result<(Vec<u8>, String), RomLoadError> {
+    #[cfg(feature = "rom-zip")]
+    {
+        return load_rom_from_zip(path, bytes, entry);
+    }
+    #[cfg(not(feature = "rom-zip"))]
+    {
+        let _ = (bytes, entry);
+        Err(RomLoadError::FormatDisabled {
+            path: path.to_path_buf(),
+            format: "zip",
+            feature: "rom-zip",
+        })
+    }
+}
+
+fn load_rom_from_gzip_or_err(
+    path: &Path,
+    bytes: &[u8],
+    entry: Option<&str>,
+) -> Result<(Vec<u8>, String), RomLoadError> {
+    #[cfg(feature = "rom-gzip")]
+    {
+        return load_rom_from_gzip(path, bytes, entry);
+    }
+    #[cfg(not(feature = "rom-gzip"))]
+    {
+        let _ = (bytes, entry);
+        Err(RomLoadError::FormatDisabled {
+            path: path.to_path_buf(),
+            format: "gzip",
+            feature: "rom-gzip",
+        })
+    }
+}
+
+fn load_rom_from_7z_or_err(
+    path: &Path,
+    bytes: &[u8],
+    entry: Option<&str>,
+) -> Result<(Vec<u8>, String), RomLoadError> {
+    #[cfg(feature = "rom-7z")]
+    {
+        return load_rom_from_7z(path, bytes, entry);
+    }
+    #[cfg(not(feature = "rom-7z"))]
+    {
+        let _ = (bytes, entry);
+        Err(RomLoadError::FormatDisabled {
+            path: path.to_path_buf(),
+            format: "7z",
+            feature: "rom-7z",
+        })
+    }
+}
+
+#[cfg(feature = "rom-zip")]
 fn load_rom_from_zip(
     archive_path: &Path,
     bytes: &[u8],
@@ -213,6 +293,7 @@ fn load_rom_from_zip(
     Ok((rom, format!("entry '{selected}'")))
 }
 
+#[cfg(feature = "rom-gzip")]
 fn load_rom_from_gzip(
     path: &Path,
     bytes: &[u8],
@@ -237,6 +318,7 @@ fn load_rom_from_gzip(
     Ok((rom, "gzip stream".to_string()))
 }
 
+#[cfg(feature = "rom-7z")]
 fn load_rom_from_7z(
     path: &Path,
     bytes: &[u8],
@@ -299,6 +381,7 @@ fn load_rom_from_7z(
     }
 }
 
+#[cfg(any(feature = "rom-zip", feature = "rom-7z"))]
 fn select_archive_entry(
     path: &Path,
     requested_entry: Option<&str>,
@@ -334,6 +417,7 @@ fn select_archive_entry(
     }
 }
 
+#[cfg(any(feature = "rom-zip", feature = "rom-7z"))]
 fn is_rom_entry_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower.ends_with(".gb") || lower.ends_with(".gbc")
@@ -358,7 +442,7 @@ fn format_entries(entries: &[String]) -> String {
     entries.join(", ")
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "rom-zip", feature = "rom-gzip", feature = "rom-7z"))]
 mod tests {
     use super::*;
     use flate2::write::GzEncoder;

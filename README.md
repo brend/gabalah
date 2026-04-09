@@ -24,6 +24,32 @@ Supported inputs:
 $ cargo run path/to/some_rom.gb
 ```
 
+### Cargo Feature Flags
+
+Gabalah now supports a minimal core build with optional frontend and archive format support.
+
+Enabled by default:
+
+- `frontend`
+- `frontend-pixels`
+- `frontend-wgpu`
+- `rom-zip`
+- `rom-gzip`
+- `rom-7z`
+
+Common build profiles:
+
+```sh
+# Full app (default features)
+cargo run -- path/to/rom.gb
+
+# Core emulator library only (no windowing/backends/archive decoders)
+cargo build --no-default-features
+
+# Minimal frontend with terminal backend and raw ROM loading only
+cargo run --no-default-features --features frontend -- path/to/rom.gb
+```
+
 For ZIP/7Z archives with multiple ROM candidates, use `--entry` to pick an exact archive path:
 
 ``` sh
