@@ -122,6 +122,25 @@ Changing `"graphics_backend"` still requires restarting the app.
 The terminal backend renders into an alternate terminal screen at a fixed 80x24 grid and
 intentionally caps redraw rate for readability.
 
+### Enable Terminal Backend
+
+Set `graphics_backend` in `config.json`:
+
+```json
+{
+  "graphics_backend": "terminal"
+}
+```
+
+Then run as usual:
+
+```sh
+cargo run -- path/to/your_rom.gb
+```
+
+Backend aliases `"tty"` and `"ansi"` are also accepted.
+Use `Escape` to exit and restore the normal terminal screen/cursor state.
+
 ### Controls
 
 - D-Pad: configurable, defaults to Arrow keys
