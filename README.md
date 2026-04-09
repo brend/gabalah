@@ -12,10 +12,22 @@ to learn more.
 
 ## Build and run
 
-Gabalah expects a path to a ROM file as its single command line argument.
+Gabalah expects a path to a ROM input as its single command line argument.
+Supported inputs:
+
+- raw ROM files (`.gb`, `.gbc`, or any raw bytes)
+- ZIP archives (`.zip`)
+- GZIP-compressed ROMs (`.gz`)
+- 7-Zip archives (`.7z`)
 
 ``` sh
 $ cargo run path/to/some_rom.gb
+```
+
+For ZIP/7Z archives with multiple ROM candidates, use `--entry` to pick an exact archive path:
+
+``` sh
+$ cargo run -- --entry "testroms/mooneye/acceptance/ei_sequence.gb" rom_bundle.zip
 ```
 
 ### Cartridge Metadata
