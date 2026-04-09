@@ -1,13 +1,4 @@
-mod app;
-mod cartridge;
-mod config;
-mod cpu;
-mod memory;
-mod renderer;
-mod rom_loader;
-mod ui;
-
-use cpu::Cpu;
+use gabalah::{app, config, cpu::Cpu, rom_loader};
 use std::env;
 use std::path::Path;
 
