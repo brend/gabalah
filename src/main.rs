@@ -1,4 +1,5 @@
 mod app;
+mod cartridge;
 mod config;
 mod cpu;
 mod memory;

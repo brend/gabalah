@@ -1,3 +1,6 @@
+use crate::cartridge::CartridgeHeader;
+use log::warn;
+
 const ROM_SIZE: usize = 32 * 1024;
 
 pub fn word(hi: u8, lo: u8) -> u16 {
@@ -122,6 +125,7 @@ impl Default for Ram {
 pub struct Ram {
     cells: [u8; RAM_SIZE],
     rom_loaded: bool,
+    cartridge_header: Option<CartridgeHeader>,
     /// Bits 4-5 of the last write to 0xFF00: selects which button group to read
     joypad_select: u8,
     /// Active-high bitmask of pressed action buttons (bit 0=A, 1=B, 2=Select, 3=Start)
@@ -142,6 +146,7 @@ impl Ram {
         let mut ram = Ram {
             cells: [0; RAM_SIZE],
             rom_loaded: false,
+            cartridge_header: None,
             joypad_select: 0x30,
             action_buttons: 0,
             direction_buttons: 0,
@@ -162,6 +167,13 @@ impl Ram {
     /// Loads a ROM into memory
     pub fn load_rom(&mut self, rom: Vec<u8>) {
         assert!(rom.len() <= ROM_SIZE, "maximum ROM size exceeded");
+        self.cartridge_header = match CartridgeHeader::from_bytes(&rom) {
+            Ok(header) => Some(header),
+            Err(err) => {
+                warn!("Failed to parse cartridge header metadata: {err}");
+                None
+            }
+        };
         let base_addr = 0x0000;
         for (i, byte) in rom.iter().enumerate() {
             self.cells[base_addr + i] = *byte;
@@ -307,6 +319,11 @@ impl Ram {
 
     pub fn as_slice(&self) -> &[u8] {
         &self.cells
+    }
+
+    #[allow(dead_code)]
+    pub fn cartridge_header(&self) -> Option<&CartridgeHeader> {
+        self.cartridge_header.as_ref()
     }
 
     /// Sets LY directly (used by PPU timing logic).

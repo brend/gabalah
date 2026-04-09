@@ -5,6 +5,7 @@ use super::ops::{CycleSpec, Instruction};
 use super::{
     alu, map, Mnemonic, CARRY_FLAG_BITMASK, HALF_CARRY_FLAG_BITMASK, SUBTRACTION_FLAG_BITMASK,
 };
+use crate::cartridge::CartridgeHeader;
 use crate::memory::{Addr, Ram, Registers};
 
 use Mnemonic::*;
@@ -40,6 +41,11 @@ impl Cpu {
     /// Loads a program into memory
     pub fn load_rom(&mut self, rom: Vec<u8>) {
         self.memory.load_rom(rom);
+    }
+
+    #[allow(dead_code)]
+    pub fn cartridge_header(&self) -> Option<&CartridgeHeader> {
+        self.memory.cartridge_header()
     }
 
     /// Executes the next instruction, returning the number of cycles consumed
