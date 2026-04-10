@@ -1,7 +1,10 @@
-use crate::cartridge::CartridgeHeader;
+use crate::cartridge::{CartridgeHeader, CartridgeType};
 use log::warn;
 
-const ROM_SIZE: usize = 32 * 1024;
+const ROM_BANK_SIZE: usize = 16 * 1024;
+const SWITCHABLE_ROM_START: usize = 0x4000;
+const SWITCHABLE_ROM_END: usize = 0x7FFF;
+const VISIBLE_ROM_END: usize = 0x7FFF;
 
 pub fn word(hi: u8, lo: u8) -> u16 {
     ((hi as u16) << 8) | lo as u16
@@ -125,6 +128,7 @@ impl Default for Ram {
 pub struct Ram {
     cells: [u8; RAM_SIZE],
     rom_loaded: bool,
+    cartridge_rom: Vec<u8>,
     cartridge_header: Option<CartridgeHeader>,
     /// Bits 4-5 of the last write to 0xFF00: selects which button group to read
     joypad_select: u8,
@@ -146,6 +150,7 @@ impl Ram {
         let mut ram = Ram {
             cells: [0; RAM_SIZE],
             rom_loaded: false,
+            cartridge_rom: Vec::new(),
             cartridge_header: None,
             joypad_select: 0x30,
             action_buttons: 0,
@@ -166,7 +171,6 @@ impl Ram {
 
     /// Loads a ROM into memory
     pub fn load_rom(&mut self, rom: Vec<u8>) {
-        assert!(rom.len() <= ROM_SIZE, "maximum ROM size exceeded");
         self.cartridge_header = match CartridgeHeader::from_bytes(&rom) {
             Ok(header) => Some(header),
             Err(err) => {
@@ -174,10 +178,12 @@ impl Ram {
                 None
             }
         };
-        let base_addr = 0x0000;
-        for (i, byte) in rom.iter().enumerate() {
-            self.cells[base_addr + i] = *byte;
-        }
+        self.cartridge_rom = rom;
+        self.cells[0x0000..=VISIBLE_ROM_END].fill(0xFF);
+
+        let fixed_len = ROM_BANK_SIZE.min(self.cartridge_rom.len());
+        self.cells[0x0000..fixed_len].copy_from_slice(&self.cartridge_rom[0x0000..fixed_len]);
+        self.load_rom_bank(1);
         self.rom_loaded = true;
     }
 
@@ -216,7 +222,8 @@ impl Ram {
             return;
         }
         // Cartridge ROM area. After a cartridge is loaded, writes are ignored.
-        if self.rom_loaded && addr <= 0x7FFF {
+        if self.rom_loaded && addr <= VISIBLE_ROM_END {
+            self.handle_write_with_mbc(address, value);
             return;
         }
         // Echo RAM mirrors C000-DDFF.
@@ -229,6 +236,77 @@ impl Ram {
             return;
         }
         self.cells[addr] = value;
+    }
+
+    /// Handles writes to cartridge ROM area with MBC support (if applicable)
+    fn handle_write_with_mbc(&mut self, address: Addr, value: u8) {
+        match self.cartridge_header.as_ref() {
+            Some(header) => match header.cartridge_type {
+                CartridgeType::Mbc1 | CartridgeType::Mbc1Ram | CartridgeType::Mbc1RamBattery => {
+                    let addr = address.0 as usize;
+
+                    match addr {
+                        0x0000..=0x1FFF => {
+                            // 0x0000-0x1FFF: RAM Enable
+                            //self.ram_enabled = value & 0x0F == 0x0A;
+                            // Cartridge RAM is not wired yet.
+                        }
+                        0x2000..=0x3FFF => {
+                            // 0x2000-0x3FFF: ROM Bank Number (lower 5 bits)
+                            let rom_bank = (value & 0x1F) as usize;
+                            self.load_rom_bank(rom_bank);
+                        }
+                        0x4000..=0x5FFF => {
+                            // 0x4000-0x5FFF: RAM Bank Number or upper 2 bits of ROM Bank Number
+                            // Banking mode/register split is not wired yet.
+                        }
+                        0x6000..=0x7FFF => {
+                            // 0x6000-0x7FFF: ROM/RAM mode select
+                            // Banking mode/register split is not wired yet.
+                        }
+                        _ => {}
+                    }
+                }
+                CartridgeType::Rom => {}
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    fn load_rom_bank(&mut self, bank: usize) {
+        if self.cartridge_rom.is_empty() {
+            return;
+        }
+
+        let bank_count = self.rom_bank_count();
+        let effective_bank = if bank_count <= 1 {
+            0
+        } else {
+            // MBC1 lower 5 bits cannot select bank 0 in switchable region.
+            let mut selected = bank;
+            if selected == 0 {
+                selected = 1;
+            }
+            selected % bank_count
+        };
+
+        let src_start = effective_bank * ROM_BANK_SIZE;
+        let src_end = (src_start + ROM_BANK_SIZE).min(self.cartridge_rom.len());
+        let dst = &mut self.cells[SWITCHABLE_ROM_START..=SWITCHABLE_ROM_END];
+        dst.fill(0xFF);
+
+        if src_start < self.cartridge_rom.len() {
+            let src = &self.cartridge_rom[src_start..src_end];
+            dst[..src.len()].copy_from_slice(src);
+        }
+    }
+
+    fn rom_bank_count(&self) -> usize {
+        if let Some(header) = self.cartridge_header.as_ref() {
+            return header.rom_bank_count.max(1);
+        }
+        self.cartridge_rom.len().div_ceil(ROM_BANK_SIZE).max(1)
     }
 
     /// Sets the word at the specified address to the specified value

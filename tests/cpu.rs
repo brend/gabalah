@@ -281,6 +281,29 @@ mod tests {
     }
 
     #[test]
+    fn mbc1_write_to_2000_switches_rom_bank_window() {
+        let mut rom = vec![0u8; 4 * 16 * 1024];
+        rom[0x0143] = 0x00; // DMG mode
+        rom[0x0147] = 0x01; // MBC1
+        rom[0x0148] = 0x01; // 4 ROM banks
+        rom[0x4000] = 0x11; // bank 1 marker
+        rom[0x8000] = 0x22; // bank 2 marker
+
+        let mut ram = Ram::new();
+        ram.load_rom(rom);
+
+        assert_eq!(ram.read_byte(Addr(0x4000)), 0x11, "bank 1 should be mapped");
+        ram.write_byte(Addr(0x2000), 0x02);
+        assert_eq!(ram.read_byte(Addr(0x4000)), 0x22, "bank 2 should be mapped");
+        ram.write_byte(Addr(0x2000), 0x00);
+        assert_eq!(
+            ram.read_byte(Addr(0x4000)),
+            0x11,
+            "bank 0 request should map to bank 1"
+        );
+    }
+
+    #[test]
     fn echo_ram_reads_and_writes_map_to_work_ram() {
         let mut ram = Ram::new();
         ram.write_byte(Addr(0xC123), 0x42);

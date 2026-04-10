@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 #[cfg(feature = "rom-zip")]
 use zip::ZipArchive;
 
-const MAX_ROM_SIZE: usize = 32 * 1024;
+const MAX_ROM_SIZE: usize = 8 * 1024 * 1024;
 const ZIP_MAGIC: &[u8; 4] = b"PK\x03\x04";
 const GZIP_MAGIC: &[u8; 2] = &[0x1F, 0x8B];
 const SEVEN_Z_MAGIC: &[u8; 6] = &[b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C];
