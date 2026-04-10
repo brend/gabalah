@@ -478,6 +478,41 @@ mod tests {
     }
 
     #[test]
+    fn scanline_latches_allow_per_line_window_enable() {
+        let mut ram = blank_ram();
+        ram[0xFF47] = 0xE4; // BGP: identity mapping
+        ram[0x9C00] = 1; // window tile map index 0 -> tile 1
+        write_tile(&mut ram, 0x8010, [(0xFF, 0xFF); 8]); // tile 1: shade 3
+
+        let mut latches = [ScanlineRegs::default(); HEIGHT as usize];
+        let base = ScanlineRegs {
+            lcdc: 0x91, // LCD on, BG on, window off, unsigned tile data
+            scy: 0,
+            scx: 0,
+            bgp: ram[0xFF47],
+            wy: 0,
+            wx: 7, // window appears from screen x=0
+        };
+        latches.fill(base);
+        latches[1].lcdc = 0xF1; // enable window only on line 1, window map=0x9C00
+
+        let mut screen = blank_screen();
+        let mut bg_opaque = vec![false; WIDTH as usize * HEIGHT as usize];
+        render_frame_with_scanline_latches(&ram, &mut screen, &mut bg_opaque, &latches);
+
+        assert_eq!(
+            pixel(&screen, 0, 0),
+            GB_COLORS[0],
+            "line 0 has window disabled"
+        );
+        assert_eq!(
+            pixel(&screen, 0, 1),
+            GB_COLORS[3],
+            "line 1 has window enabled"
+        );
+    }
+
+    #[test]
     fn scx_wraps_tile_map_mid_scanline() {
         // SCX=252: bg_x starts at 252 (tile col 31), wraps to 0 (tile col 0) after 4 pixels.
         // Tests that the per-row tile cache invalidates correctly on the 256→0 wrap.

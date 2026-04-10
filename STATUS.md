@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-04-09
+Last updated: 2026-04-10
 
 ## What Works
 
@@ -25,6 +25,7 @@ Last updated: 2026-04-09
 - DMA transfer (`0xFF46`) copies 160 bytes into OAM
 - Serial capture stub (`0xFF01/0xFF02`) with IF serial bit request
 - LY write reset (`0xFF44`) and STAT writable-bit masking (`0xFF41`)
+- Basic MBC1 ROM banking (lower/upper ROM bank bits + mode select for fixed/switchable windows)
 
 ### Interrupts
 - IF/IE register flow wired into CPU dispatch
@@ -32,7 +33,7 @@ Last updated: 2026-04-09
 - VBlank interrupt requested at line 144
 - Timer interrupt requested on TIMA overflow
 - Joypad interrupt requested on newly pressed key
-- STAT mode/coincidence bits are updated, but STAT IRQ generation is currently disabled
+- STAT IRQ generation enabled for mode transitions and LY==LYC edge
 
 ### App / Display
 - winit event loop with pluggable graphics backends (160×144, scaled 3×)
@@ -56,18 +57,20 @@ Last updated: 2026-04-09
   - BG/Window master gate (`bit 0`) controls BG+Window drawing
   - OBJ enable (`bit 1`) controls sprite drawing
 - Tile addressing supports both signed (`0x8800` region) and unsigned (`0x8000`) modes
+- Scanline-latched BG/Window register rendering (`SCX/SCY/WX/WY/LCDC/BGP`) for per-line split effects
 
 ## Known Gaps
 
 ### PPU accuracy
-- STAT interrupt generation disabled pending tighter timing accuracy
-- No per-scanline register latching/render pipeline (mid-scanline effects not emulated)
+- LCD mode transitions are still coarse at instruction granularity; not yet sliced at dot-level boundaries
+- Future improvement: dot-level mode transition slicing for tighter STAT edge timing and latch points
 
 ### UI/backend limitations
 - Backend type changes still require restart (runtime reload applies backend options only)
 
 ### Cartridge / hardware
-- No cartridge abstraction (MBC1/MBC3/MBC5 not implemented)
+- No full cartridge mapper abstraction yet (MBC1 is partial; MBC3/MBC5 not implemented)
+- MBC1 external RAM banking/enable behavior not yet implemented
 - Header checksum/global checksum are parsed but not yet enforced for ROM rejection
 - No save RAM persistence (`.sav`)
 - STOP remains a no-op
@@ -79,9 +82,9 @@ Last updated: 2026-04-09
 | Area | Tests | Status |
 |---|---|---|
 | CPU core ops | 34 (`tests/ops.rs`) | passing |
-| Memory/IO/timer/joypad/DMA | 24 (`tests/cpu.rs`) | passing |
+| Memory/IO/timer/joypad/DMA/MBC1 | 27 (`tests/cpu.rs`) | passing |
 | Cartridge header parser + checksum validation | 9 (`tests/cartridge.rs`) | passing |
-| Renderer (BG/window/OBJ + attributes) | 13 (`src/renderer.rs`) | passing |
+| Renderer (BG/window/OBJ + scanline latch path) | 14 (`src/renderer.rs`) | passing |
 | Graphics config/backend parsing | 10 (`src/config.rs`, `src/ui/mod.rs`) | passing |
 | WGSL shader contract/discovery tests | 5 (`src/ui/wgpu_shader_backend.rs`) | passing |
 | Interrupt conformance ROMs | partial/manual | in progress |

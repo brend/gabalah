@@ -41,8 +41,9 @@ Items are ordered by dependency. Check off items as they are done and keep `STAT
 - [x] VBlank request at LY=144
 - [x] Basic STAT mode/coincidence state updates (`0xFF41`)
 - [x] Respect LCDC display enable (`bit 7`) and BG/window gate (`bit 0`) in renderer
-- [ ] Enable STAT IRQ generation with accurate edge behavior
-- [ ] Add scanline-accurate render timing/latching for mid-frame register changes
+- [x] Enable STAT IRQ generation (edge-triggered at current timing granularity)
+- [x] Add scanline-latched render path for mid-frame register changes (first pass)
+- [ ] Implement dot-level mode transition slicing for cycle-accurate STAT/latch timing
 
 ---
 
@@ -76,7 +77,8 @@ Items are ordered by dependency. Check off items as they are done and keep `STAT
 - [x] Echo RAM mirror (`0xE000..0xFDFF`)
 - [x] Unusable area semantics (`0xFEA0..0xFEFF`)
 - [ ] ROM-only cartridge abstraction (`type 0x00`) via mapper layer
-- [ ] MBC1 support
+- [x] MBC1 ROM bank switching (lower/upper bank bits + mode select)
+- [ ] MBC1 external RAM banking/enable behavior
 - [ ] MBC3 support
 - [ ] MBC5 support
 - [ ] Battery-backed save RAM persistence

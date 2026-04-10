@@ -38,6 +38,38 @@ fn make_priority_ram() -> Vec<u8> {
     ram
 }
 
+fn make_uniform_latches(ram: &[u8]) -> [renderer::ScanlineRegs; renderer::HEIGHT as usize] {
+    let mut latches = [renderer::ScanlineRegs::default(); renderer::HEIGHT as usize];
+    let regs = renderer::ScanlineRegs {
+        lcdc: ram[0xFF40],
+        scy: ram[0xFF42],
+        scx: ram[0xFF43],
+        bgp: ram[0xFF47],
+        wy: ram[0xFF4A],
+        wx: ram[0xFF4B],
+    };
+    latches.fill(regs);
+    latches
+}
+
+fn make_split_latches(ram: &[u8]) -> [renderer::ScanlineRegs; renderer::HEIGHT as usize] {
+    let mut latches = make_uniform_latches(ram);
+    for (line, regs) in latches.iter_mut().enumerate() {
+        if line < 16 {
+            // Simulate a fixed HUD region
+            regs.scx = 0;
+            regs.wy = 0;
+            regs.wx = 7;
+            regs.lcdc |= 0x20;
+        } else {
+            // Simulate gameplay scroll changing by scanline
+            regs.scx = ((line * 3) & 0xFF) as u8;
+            regs.scy = ((17 + line * 2) & 0xFF) as u8;
+        }
+    }
+    latches
+}
+
 fn bench_render_frame_alloc(c: &mut Criterion) {
     let ram = make_ram();
     let mut screen = vec![0u8; renderer::WIDTH as usize * renderer::HEIGHT as usize * 4];
@@ -76,10 +108,46 @@ fn bench_render_frame_reuse_priority(c: &mut Criterion) {
     });
 }
 
+fn bench_render_frame_latched_uniform(c: &mut Criterion) {
+    let ram = make_ram();
+    let latches = make_uniform_latches(&ram);
+    let mut screen = vec![0u8; renderer::WIDTH as usize * renderer::HEIGHT as usize * 4];
+    let mut bg_opaque = vec![false; renderer::WIDTH as usize * renderer::HEIGHT as usize];
+    c.bench_function("render_frame_latched_uniform", |b| {
+        b.iter(|| {
+            renderer::render_frame_with_scanline_latches(
+                black_box(&ram),
+                black_box(&mut screen),
+                &mut bg_opaque,
+                black_box(&latches),
+            )
+        })
+    });
+}
+
+fn bench_render_frame_latched_split(c: &mut Criterion) {
+    let ram = make_ram();
+    let latches = make_split_latches(&ram);
+    let mut screen = vec![0u8; renderer::WIDTH as usize * renderer::HEIGHT as usize * 4];
+    let mut bg_opaque = vec![false; renderer::WIDTH as usize * renderer::HEIGHT as usize];
+    c.bench_function("render_frame_latched_split", |b| {
+        b.iter(|| {
+            renderer::render_frame_with_scanline_latches(
+                black_box(&ram),
+                black_box(&mut screen),
+                &mut bg_opaque,
+                black_box(&latches),
+            )
+        })
+    });
+}
+
 criterion_group!(
     benches,
     bench_render_frame_alloc,
     bench_render_frame_reuse,
-    bench_render_frame_reuse_priority
+    bench_render_frame_reuse_priority,
+    bench_render_frame_latched_uniform,
+    bench_render_frame_latched_split
 );
 criterion_main!(benches);

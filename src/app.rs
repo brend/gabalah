@@ -564,4 +564,57 @@ mod tests {
         assert_eq!(emulator.cpu.memory.read_byte(Addr(0xFF05)), 1);
         assert_eq!(emulator.ppu_line_cycles, 24);
     }
+
+    #[test]
+    fn maybe_latch_scanline_captures_registers_once_per_line() {
+        let mut cpu = Cpu::new();
+        cpu.memory.write_byte(Addr(0xFF40), 0xB1);
+        cpu.memory.write_byte(Addr(0xFF42), 0x22);
+        cpu.memory.write_byte(Addr(0xFF43), 0x11);
+        cpu.memory.write_byte(Addr(0xFF47), 0xE4);
+        cpu.memory.write_byte(Addr(0xFF4A), 0x05);
+        cpu.memory.write_byte(Addr(0xFF4B), 0x10);
+
+        let mut emulator = Emulator::new(cpu, DebugDumpSettings::default());
+        emulator.maybe_latch_scanline(12, 3);
+
+        assert!(emulator.scanline_latched[12]);
+        let first = emulator.scanline_latches[12];
+        assert_eq!(first.lcdc, 0xB1);
+        assert_eq!(first.scy, 0x22);
+        assert_eq!(first.scx, 0x11);
+        assert_eq!(first.bgp, 0xE4);
+        assert_eq!(first.wy, 0x05);
+        assert_eq!(first.wx, 0x10);
+
+        emulator.cpu.memory.write_byte(Addr(0xFF42), 0x99);
+        emulator.cpu.memory.write_byte(Addr(0xFF43), 0x88);
+        emulator.maybe_latch_scanline(12, 3);
+        let second = emulator.scanline_latches[12];
+
+        assert_eq!(
+            first.scy, second.scy,
+            "line latch should be stable after first capture"
+        );
+        assert_eq!(
+            first.scx, second.scx,
+            "line latch should be stable after first capture"
+        );
+    }
+
+    #[test]
+    fn tick_lcd_clears_scanline_latches_on_frame_wrap() {
+        let cpu = Cpu::new();
+        let mut emulator = Emulator::new(cpu, DebugDumpSettings::default());
+
+        emulator.scanline_latched.fill(true);
+        emulator.cpu.memory.set_ly_raw(153);
+        emulator.ppu_line_cycles = 0;
+        emulator.tick_lcd(456);
+
+        assert!(
+            emulator.scanline_latched.iter().all(|latched| !latched),
+            "all scanline latches should reset when LY wraps to 0"
+        );
+    }
 }

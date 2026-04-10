@@ -219,4 +219,10 @@ $ cargo test --test cartridge
 ## Emulation Accuracy
 
 During development of Gabalah, I'll try to use [blargg's test roms](https://github.com/L-P/blargg-test-roms/tree/master) to improve 
-the accuracy of the emulation. 
+the accuracy of the emulation.
+
+Current LCD/PPU timing notes:
+
+- STAT IRQ generation is enabled.
+- BG/window rendering supports scanline-latched register state for split-screen effects.
+- Future improvement: implement dot-level mode transition slicing to tighten STAT edge timing and scanline latch points.
