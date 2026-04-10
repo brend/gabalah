@@ -130,6 +130,12 @@ pub struct Ram {
     rom_loaded: bool,
     cartridge_rom: Vec<u8>,
     cartridge_header: Option<CartridgeHeader>,
+    /// MBC1 register: lower 5 bits of ROM bank number (0 maps to 1).
+    mbc1_rom_bank_low5: u8,
+    /// MBC1 register: upper 2 bits (ROM high bits in mode 0, RAM bank in mode 1).
+    mbc1_bank_high2: u8,
+    /// MBC1 mode register (0 = ROM banking mode, 1 = RAM banking mode).
+    mbc1_mode: u8,
     /// Bits 4-5 of the last write to 0xFF00: selects which button group to read
     joypad_select: u8,
     /// Active-high bitmask of pressed action buttons (bit 0=A, 1=B, 2=Select, 3=Start)
@@ -152,6 +158,9 @@ impl Ram {
             rom_loaded: false,
             cartridge_rom: Vec::new(),
             cartridge_header: None,
+            mbc1_rom_bank_low5: 1,
+            mbc1_bank_high2: 0,
+            mbc1_mode: 0,
             joypad_select: 0x30,
             action_buttons: 0,
             direction_buttons: 0,
@@ -180,9 +189,10 @@ impl Ram {
         };
         self.cartridge_rom = rom;
         self.cells[0x0000..=VISIBLE_ROM_END].fill(0xFF);
-
-        let fixed_len = ROM_BANK_SIZE.min(self.cartridge_rom.len());
-        self.cells[0x0000..fixed_len].copy_from_slice(&self.cartridge_rom[0x0000..fixed_len]);
+        self.mbc1_rom_bank_low5 = 1;
+        self.mbc1_bank_high2 = 0;
+        self.mbc1_mode = 0;
+        self.load_fixed_rom_bank(0);
         self.load_rom_bank(1);
         self.rom_loaded = true;
     }
@@ -253,16 +263,18 @@ impl Ram {
                         }
                         0x2000..=0x3FFF => {
                             // 0x2000-0x3FFF: ROM Bank Number (lower 5 bits)
-                            let rom_bank = (value & 0x1F) as usize;
-                            self.load_rom_bank(rom_bank);
+                            self.mbc1_rom_bank_low5 = value & 0x1F;
+                            self.refresh_mbc1_banks();
                         }
                         0x4000..=0x5FFF => {
                             // 0x4000-0x5FFF: RAM Bank Number or upper 2 bits of ROM Bank Number
-                            // Banking mode/register split is not wired yet.
+                            self.mbc1_bank_high2 = value & 0x03;
+                            self.refresh_mbc1_banks();
                         }
                         0x6000..=0x7FFF => {
                             // 0x6000-0x7FFF: ROM/RAM mode select
-                            // Banking mode/register split is not wired yet.
+                            self.mbc1_mode = value & 0x01;
+                            self.refresh_mbc1_banks();
                         }
                         _ => {}
                     }
@@ -280,16 +292,7 @@ impl Ram {
         }
 
         let bank_count = self.rom_bank_count();
-        let effective_bank = if bank_count <= 1 {
-            0
-        } else {
-            // MBC1 lower 5 bits cannot select bank 0 in switchable region.
-            let mut selected = bank;
-            if selected == 0 {
-                selected = 1;
-            }
-            selected % bank_count
-        };
+        let effective_bank = self.normalize_switchable_rom_bank(bank, bank_count);
 
         let src_start = effective_bank * ROM_BANK_SIZE;
         let src_end = (src_start + ROM_BANK_SIZE).min(self.cartridge_rom.len());
@@ -300,6 +303,65 @@ impl Ram {
             let src = &self.cartridge_rom[src_start..src_end];
             dst[..src.len()].copy_from_slice(src);
         }
+    }
+
+    fn load_fixed_rom_bank(&mut self, bank: usize) {
+        if self.cartridge_rom.is_empty() {
+            return;
+        }
+
+        let bank_count = self.rom_bank_count();
+        let effective_bank = bank % bank_count;
+        let src_start = effective_bank * ROM_BANK_SIZE;
+        let src_end = (src_start + ROM_BANK_SIZE).min(self.cartridge_rom.len());
+        let dst = &mut self.cells[0x0000..ROM_BANK_SIZE];
+        dst.fill(0xFF);
+
+        if src_start < self.cartridge_rom.len() {
+            let src = &self.cartridge_rom[src_start..src_end];
+            dst[..src.len()].copy_from_slice(src);
+        }
+    }
+
+    fn normalize_switchable_rom_bank(&self, bank: usize, bank_count: usize) -> usize {
+        if bank_count <= 1 {
+            return 0;
+        }
+
+        let mut selected = bank;
+        if matches!(
+            self.cartridge_header.as_ref().map(|h| h.cartridge_type),
+            Some(CartridgeType::Mbc1 | CartridgeType::Mbc1Ram | CartridgeType::Mbc1RamBattery)
+        ) {
+            // MBC1 forbids selecting a switchable bank where lower five bits are zero.
+            if (selected & 0x1F) == 0 {
+                selected |= 0x01;
+            }
+        } else if selected == 0 {
+            selected = 1;
+        }
+
+        selected % bank_count
+    }
+
+    fn refresh_mbc1_banks(&mut self) {
+        let low5 = {
+            let mut v = (self.mbc1_rom_bank_low5 & 0x1F) as usize;
+            if v == 0 {
+                v = 1;
+            }
+            v
+        };
+        let high2 = (self.mbc1_bank_high2 & 0x03) as usize;
+
+        let (fixed_bank, switchable_bank) = if self.mbc1_mode == 0 {
+            (0usize, (high2 << 5) | low5)
+        } else {
+            ((high2 << 5), low5)
+        };
+
+        self.load_fixed_rom_bank(fixed_bank);
+        self.load_rom_bank(switchable_bank);
     }
 
     fn rom_bank_count(&self) -> usize {

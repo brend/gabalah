@@ -1,37 +1,37 @@
 {
-  "graphics_backend": "wgpu_shader",
-  "window": {
-    "scale": 3.0
-  },
   "controls": {
+    "hotkeys": {
+      "debug_frame_dump": "f9",
+      "exit": "escape",
+      "next_shader": "e",
+      "previous_shader": "q",
+      "reload_graphics_config": "r"
+    },
     "joypad": {
-      "up": "up",
+      "a": "z",
+      "b": "x",
       "down": "down",
       "left": "left",
       "right": "right",
-      "a": "z",
-      "b": "x",
       "select": "right_shift",
-      "start": "enter"
-    },
-    "hotkeys": {
-      "reload_graphics_config": "r",
-      "previous_shader": "q",
-      "next_shader": "e",
-      "debug_frame_dump": "f9",
-      "exit": "escape"
+      "start": "enter",
+      "up": "up"
     }
   },
   "debug_dump": {
     "enabled": true,
     "output_directory": "debug_dumps"
   },
+  "graphics_backend": "wgpu_shader",
   "shader": {
-    "directory": "shaders",
     "active_file": "no_effect.wgsl",
     "color_intensity": 0.82,
     "curvature": 0.1,
+    "directory": "shaders",
     "mode": "palette_mutation",
     "scanline_strength": 0.22
+  },
+  "window": {
+    "scale": 3.0
   }
 }

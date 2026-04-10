@@ -332,10 +332,7 @@ impl Emulator {
             0
         };
         let lyc = self.cpu.memory.read_byte(Addr(0xFF45));
-        // Keep STAT mode/coincidence bits updated for software polling, but
-        // don't assert STAT IRQ yet: current timing granularity is not precise
-        // enough and can over-interrupt some games.
-        self.update_stat(mode, ly == lyc, false);
+        self.update_stat(mode, ly == lyc, true);
     }
 
     fn update_stat(&mut self, mode: u8, coincidence: bool, allow_interrupt: bool) {

@@ -304,6 +304,50 @@ mod tests {
     }
 
     #[test]
+    fn mbc1_write_to_4000_updates_upper_rom_bank_bits_in_mode0() {
+        let mut rom = vec![0u8; 64 * 16 * 1024];
+        rom[0x0143] = 0x00; // DMG mode
+        rom[0x0147] = 0x01; // MBC1
+        rom[0x0148] = 0x05; // 64 ROM banks
+        rom[0x4000] = 0x11; // bank 1 marker
+        rom[33 * 16 * 1024] = 0x33; // bank 33 marker
+
+        let mut ram = Ram::new();
+        ram.load_rom(rom);
+
+        assert_eq!(ram.read_byte(Addr(0x4000)), 0x11, "bank 1 should be mapped");
+        ram.write_byte(Addr(0x2000), 0x01); // low bits = 1
+        ram.write_byte(Addr(0x4000), 0x01); // high bits = 1 -> bank 0x21 in mode 0
+        assert_eq!(
+            ram.read_byte(Addr(0x4000)),
+            0x33,
+            "bank 33 should be mapped when upper bits are set"
+        );
+    }
+
+    #[test]
+    fn mbc1_mode1_write_updates_fixed_bank_window() {
+        let mut rom = vec![0u8; 64 * 16 * 1024];
+        rom[0x0143] = 0x00; // DMG mode
+        rom[0x0147] = 0x01; // MBC1
+        rom[0x0148] = 0x05; // 64 ROM banks
+        rom[0x0000] = 0x10; // bank 0 marker
+        rom[32 * 16 * 1024] = 0x20; // bank 32 marker
+
+        let mut ram = Ram::new();
+        ram.load_rom(rom);
+        assert_eq!(ram.read_byte(Addr(0x0000)), 0x10, "bank 0 should be fixed initially");
+
+        ram.write_byte(Addr(0x4000), 0x01); // upper bits = 1
+        ram.write_byte(Addr(0x6000), 0x01); // mode 1: fixed window uses upper bits
+        assert_eq!(
+            ram.read_byte(Addr(0x0000)),
+            0x20,
+            "mode 1 should remap fixed window to bank 32"
+        );
+    }
+
+    #[test]
     fn echo_ram_reads_and_writes_map_to_work_ram() {
         let mut ram = Ram::new();
         ram.write_byte(Addr(0xC123), 0x42);
