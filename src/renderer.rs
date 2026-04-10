@@ -12,6 +12,27 @@ const GB_COLORS: [[u8; 4]; 4] = [
     [0x0F, 0x38, 0x0F, 0xFF],
 ];
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ScanlineRegs {
+    pub lcdc: u8,
+    pub scy: u8,
+    pub scx: u8,
+    pub bgp: u8,
+    pub wy: u8,
+    pub wx: u8,
+}
+
+fn scanline_regs_from_ram(ram: &[u8]) -> ScanlineRegs {
+    ScanlineRegs {
+        lcdc: ram[0xFF40],
+        scy: ram[0xFF42],
+        scx: ram[0xFF43],
+        bgp: ram[0xFF47],
+        wy: ram[0xFF4A],
+        wx: ram[0xFF4B],
+    }
+}
+
 /// Renders the background layer into `screen` (RGBA, 160×144).
 /// `ram` must be a 65536-byte slice (the full Game Boy address space).
 /// Reads SCX/SCY scroll registers and respects LCDC tile map / data area bits.
@@ -24,29 +45,52 @@ pub fn render_frame(ram: &[u8], screen: &mut [u8]) {
 /// Renders a frame while reusing a caller-provided opacity buffer.
 /// `bg_opaque` must have one entry per screen pixel.
 pub fn render_frame_with_bg_opaque(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
+    let mut latches = [ScanlineRegs::default(); HEIGHT as usize];
+    let regs = scanline_regs_from_ram(ram);
+    latches.fill(regs);
+    render_frame_with_scanline_latches(ram, screen, bg_opaque, &latches);
+}
+
+/// Renders a frame using per-scanline latched LCD registers.
+pub fn render_frame_with_scanline_latches(
+    ram: &[u8],
+    screen: &mut [u8],
+    bg_opaque: &mut [bool],
+    scanline_regs: &[ScanlineRegs],
+) {
     debug_assert_eq!(bg_opaque.len(), WIDTH as usize * HEIGHT as usize);
+    debug_assert_eq!(scanline_regs.len(), HEIGHT as usize);
 
-    let lcdc = ram[0xFF40];
-    if (lcdc & 0x80) == 0 {
-        for pixel in screen.chunks_exact_mut(4) {
-            pixel.copy_from_slice(&GB_COLORS[0]);
-        }
-        return;
+    for pixel in screen.chunks_exact_mut(4) {
+        pixel.copy_from_slice(&GB_COLORS[0]);
     }
+    bg_opaque.fill(false);
 
-    let check_priority = has_visible_priority_obj(ram, lcdc);
+    let obj_enabled = scanline_regs
+        .iter()
+        .any(|regs| (regs.lcdc & 0x80) != 0 && (regs.lcdc & 0x02) != 0);
+    let check_priority = if obj_enabled {
+        has_visible_priority_obj(ram, 0x02)
+    } else {
+        false
+    };
 
-    // On DMG, LCDC bit 0 gates both BG and Window.
-    if (lcdc & 0x01) != 0 {
-        if check_priority {
-            render_bg::<true>(ram, screen, bg_opaque);
-            render_window::<true>(ram, screen, bg_opaque);
-        } else {
-            render_bg::<false>(ram, screen, bg_opaque);
-            render_window::<false>(ram, screen, bg_opaque);
+    for screen_y in 0..HEIGHT as usize {
+        let regs = scanline_regs[screen_y];
+        // LCD off: line remains blank.
+        if (regs.lcdc & 0x80) == 0 {
+            continue;
         }
-    } else if check_priority {
-        bg_opaque.fill(false);
+        // On DMG, LCDC bit 0 gates both BG and Window.
+        if (regs.lcdc & 0x01) != 0 {
+            if check_priority {
+                render_bg_line::<true>(ram, screen, bg_opaque, screen_y, regs);
+                render_window_line::<true>(ram, screen, bg_opaque, screen_y, regs);
+            } else {
+                render_bg_line::<false>(ram, screen, bg_opaque, screen_y, regs);
+                render_window_line::<false>(ram, screen, bg_opaque, screen_y, regs);
+            }
+        }
     }
 
     if check_priority {
@@ -159,62 +203,71 @@ fn tile_address(tile_index: u8, signed_addressing: bool) -> usize {
     }
 }
 
-fn render_bg<const TRACK_OPAQUE: bool>(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
-    let lcdc = ram[0xFF40];
-    let bgp = ram[0xFF47];
-    let scy = ram[0xFF42] as usize;
-    let scx = ram[0xFF43] as usize;
-
+fn render_bg_line<const TRACK_OPAQUE: bool>(
+    ram: &[u8],
+    screen: &mut [u8],
+    bg_opaque: &mut [bool],
+    screen_y: usize,
+    regs: ScanlineRegs,
+) {
+    let lcdc = regs.lcdc;
+    let bgp = regs.bgp;
+    let scy = regs.scy as usize;
+    let scx = regs.scx as usize;
     // LCDC bit 3: BG tile map area (0=0x9800, 1=0x9C00)
     let tile_map_base: usize = if (lcdc & 0x08) != 0 { 0x9C00 } else { 0x9800 };
     // LCDC bit 4: BG & Window tile data area (0=0x8800 signed, 1=0x8000 unsigned)
     let signed_addressing = (lcdc & 0x10) == 0;
 
-    for screen_y in 0..HEIGHT as usize {
-        let bg_y = (scy + screen_y) & 0xFF;
-        let tile_row = bg_y >> 3;
-        let pixel_y = bg_y & 7;
+    let bg_y = (scy + screen_y) & 0xFF;
+    let tile_row = bg_y >> 3;
+    let pixel_y = bg_y & 7;
 
-        // Cache tile row bytes; recomputed only when tile_col changes (every 8 pixels).
-        let mut current_tile_col = usize::MAX;
-        let mut lo = 0u8;
-        let mut hi = 0u8;
+    // Cache tile row bytes; recomputed only when tile_col changes (every 8 pixels).
+    let mut current_tile_col = usize::MAX;
+    let mut lo = 0u8;
+    let mut hi = 0u8;
 
-        for screen_x in 0..WIDTH as usize {
-            let bg_x = (scx + screen_x) & 0xFF;
-            let tile_col = bg_x >> 3;
+    for screen_x in 0..WIDTH as usize {
+        let bg_x = (scx + screen_x) & 0xFF;
+        let tile_col = bg_x >> 3;
 
-            if tile_col != current_tile_col {
-                let tile_index = ram[tile_map_base + tile_row * 32 + tile_col];
-                let addr = tile_address(tile_index, signed_addressing);
-                lo = ram[addr + pixel_y * 2];
-                hi = ram[addr + pixel_y * 2 + 1];
-                current_tile_col = tile_col;
-            }
-
-            let bit = 7 - (bg_x & 7);
-            let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
-            let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
-
-            let flat = screen_y * WIDTH as usize + screen_x;
-            if TRACK_OPAQUE {
-                bg_opaque[flat] = palette_index != 0;
-            }
-            screen[flat * 4..flat * 4 + 4].copy_from_slice(&GB_COLORS[shade]);
+        if tile_col != current_tile_col {
+            let tile_index = ram[tile_map_base + tile_row * 32 + tile_col];
+            let addr = tile_address(tile_index, signed_addressing);
+            lo = ram[addr + pixel_y * 2];
+            hi = ram[addr + pixel_y * 2 + 1];
+            current_tile_col = tile_col;
         }
+
+        let bit = 7 - (bg_x & 7);
+        let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+        let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
+
+        let flat = screen_y * WIDTH as usize + screen_x;
+        if TRACK_OPAQUE {
+            bg_opaque[flat] = palette_index != 0;
+        }
+        screen[flat * 4..flat * 4 + 4].copy_from_slice(&GB_COLORS[shade]);
     }
 }
 
-fn render_window<const TRACK_OPAQUE: bool>(ram: &[u8], screen: &mut [u8], bg_opaque: &mut [bool]) {
-    let lcdc = ram[0xFF40];
+fn render_window_line<const TRACK_OPAQUE: bool>(
+    ram: &[u8],
+    screen: &mut [u8],
+    bg_opaque: &mut [bool],
+    screen_y: usize,
+    regs: ScanlineRegs,
+) {
+    let lcdc = regs.lcdc;
     if (lcdc & 0x20) == 0 {
         return;
     }
 
-    let bgp = ram[0xFF47];
-    let wy = ram[0xFF4A] as usize;
-    let wx = ram[0xFF4B] as usize;
-    if wy >= HEIGHT as usize {
+    let bgp = regs.bgp;
+    let wy = regs.wy as usize;
+    let wx = regs.wx as usize;
+    if wy >= HEIGHT as usize || screen_y < wy {
         return;
     }
 
@@ -223,41 +276,39 @@ fn render_window<const TRACK_OPAQUE: bool>(ram: &[u8], screen: &mut [u8], bg_opa
     // LCDC bit 4: BG & Window tile data area (0=0x8800 signed, 1=0x8000 unsigned)
     let signed_addressing = (lcdc & 0x10) == 0;
 
-    for screen_y in wy..HEIGHT as usize {
-        let win_y = screen_y - wy;
-        let tile_row = win_y >> 3;
-        let pixel_y = win_y & 7;
+    let win_y = screen_y - wy;
+    let tile_row = win_y >> 3;
+    let pixel_y = win_y & 7;
 
-        // Cache tile row bytes; recomputed only when tile_col changes (every 8 pixels).
-        let mut current_tile_col = usize::MAX;
-        let mut lo = 0u8;
-        let mut hi = 0u8;
+    // Cache tile row bytes; recomputed only when tile_col changes (every 8 pixels).
+    let mut current_tile_col = usize::MAX;
+    let mut lo = 0u8;
+    let mut hi = 0u8;
 
-        for screen_x in 0..WIDTH as usize {
-            if screen_x + 7 < wx {
-                continue;
-            }
-            let win_x = screen_x + 7 - wx;
-            let tile_col = win_x >> 3;
-
-            if tile_col != current_tile_col {
-                let tile_index = ram[tile_map_base + tile_row * 32 + tile_col];
-                let addr = tile_address(tile_index, signed_addressing);
-                lo = ram[addr + pixel_y * 2];
-                hi = ram[addr + pixel_y * 2 + 1];
-                current_tile_col = tile_col;
-            }
-
-            let bit = 7 - (win_x & 7);
-            let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
-            let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
-
-            let flat = screen_y * WIDTH as usize + screen_x;
-            if TRACK_OPAQUE {
-                bg_opaque[flat] = palette_index != 0;
-            }
-            screen[flat * 4..flat * 4 + 4].copy_from_slice(&GB_COLORS[shade]);
+    for screen_x in 0..WIDTH as usize {
+        if screen_x + 7 < wx {
+            continue;
         }
+        let win_x = screen_x + 7 - wx;
+        let tile_col = win_x >> 3;
+
+        if tile_col != current_tile_col {
+            let tile_index = ram[tile_map_base + tile_row * 32 + tile_col];
+            let addr = tile_address(tile_index, signed_addressing);
+            lo = ram[addr + pixel_y * 2];
+            hi = ram[addr + pixel_y * 2 + 1];
+            current_tile_col = tile_col;
+        }
+
+        let bit = 7 - (win_x & 7);
+        let palette_index = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+        let shade = ((bgp >> (palette_index * 2)) & 0x03) as usize;
+
+        let flat = screen_y * WIDTH as usize + screen_x;
+        if TRACK_OPAQUE {
+            bg_opaque[flat] = palette_index != 0;
+        }
+        screen[flat * 4..flat * 4 + 4].copy_from_slice(&GB_COLORS[shade]);
     }
 }
 
@@ -392,6 +443,38 @@ mod tests {
         for col in 0..8 {
             assert_eq!(pixel(&screen, col, 0), GB_COLORS[3], "col {col}");
         }
+    }
+
+    #[test]
+    fn scanline_latches_allow_per_line_scx_splits() {
+        let mut ram = blank_ram();
+        ram[0xFF40] = 0x91; // LCDC: display on, BG on, unsigned tile data
+        ram[0xFF47] = 0xE4; // BGP: identity
+
+        // Tile map row 0: col 0 -> tile 1 (shade 3), col 1 -> tile 2 (shade 1).
+        ram[0x9800] = 1;
+        ram[0x9801] = 2;
+        write_tile(&mut ram, 0x8010, [(0xFF, 0xFF); 8]); // tile 1: shade 3
+        write_tile(&mut ram, 0x8020, [(0xFF, 0x00); 8]); // tile 2: shade 1
+
+        let mut latches = [ScanlineRegs::default(); HEIGHT as usize];
+        let base = ScanlineRegs {
+            lcdc: ram[0xFF40],
+            scy: 0,
+            scx: 0,
+            bgp: ram[0xFF47],
+            wy: 0,
+            wx: 0,
+        };
+        latches.fill(base);
+        latches[1].scx = 8; // second line scrolls one tile to the right
+
+        let mut screen = blank_screen();
+        let mut bg_opaque = vec![false; WIDTH as usize * HEIGHT as usize];
+        render_frame_with_scanline_latches(&ram, &mut screen, &mut bg_opaque, &latches);
+
+        assert_eq!(pixel(&screen, 0, 0), GB_COLORS[3], "line 0 uses SCX=0");
+        assert_eq!(pixel(&screen, 0, 1), GB_COLORS[1], "line 1 uses SCX=8");
     }
 
     #[test]

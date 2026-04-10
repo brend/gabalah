@@ -336,7 +336,11 @@ mod tests {
 
         let mut ram = Ram::new();
         ram.load_rom(rom);
-        assert_eq!(ram.read_byte(Addr(0x0000)), 0x10, "bank 0 should be fixed initially");
+        assert_eq!(
+            ram.read_byte(Addr(0x0000)),
+            0x10,
+            "bank 0 should be fixed initially"
+        );
 
         ram.write_byte(Addr(0x4000), 0x01); // upper bits = 1
         ram.write_byte(Addr(0x6000), 0x01); // mode 1: fixed window uses upper bits

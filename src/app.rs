@@ -256,6 +256,8 @@ struct Emulator {
     cpu: Cpu,
     ppu_line_cycles: usize,
     bg_opaque: Vec<bool>,
+    scanline_latches: [renderer::ScanlineRegs; HEIGHT as usize],
+    scanline_latched: [bool; HEIGHT as usize],
     dump_next_frame: bool,
     dump_index: usize,
     debug_dump_settings: DebugDumpSettings,
@@ -267,6 +269,8 @@ impl Emulator {
             cpu,
             ppu_line_cycles: 0,
             bg_opaque: vec![false; (WIDTH * HEIGHT) as usize],
+            scanline_latches: [renderer::ScanlineRegs::default(); HEIGHT as usize],
+            scanline_latched: [false; HEIGHT as usize],
             dump_next_frame: false,
             dump_index: 0,
             debug_dump_settings,
@@ -306,6 +310,7 @@ impl Emulator {
         if (lcdc & 0x80) == 0 {
             self.ppu_line_cycles = 0;
             self.cpu.memory.set_ly_raw(0);
+            self.scanline_latched.fill(false);
             self.update_stat(0, false, false);
             return;
         }
@@ -316,6 +321,9 @@ impl Emulator {
             let ly = self.cpu.memory.read_byte(Addr(0xFF44));
             let new_ly = if ly >= 153 { 0 } else { ly + 1 };
             self.cpu.memory.set_ly_raw(new_ly);
+            if new_ly == 0 {
+                self.scanline_latched.fill(false);
+            }
             if new_ly == 144 {
                 self.cpu.raise_if(0x01);
             }
@@ -333,6 +341,7 @@ impl Emulator {
         };
         let lyc = self.cpu.memory.read_byte(Addr(0xFF45));
         self.update_stat(mode, ly == lyc, true);
+        self.maybe_latch_scanline(ly, mode);
     }
 
     fn update_stat(&mut self, mode: u8, coincidence: bool, allow_interrupt: bool) {
@@ -395,11 +404,51 @@ impl Emulator {
 
     /// Renders the current emulator state into the pixel buffer.
     fn draw(&mut self, screen: &mut [u8]) {
-        renderer::render_frame_with_bg_opaque(
+        let mut latches = self.scanline_latches;
+        if self.scanline_latched.iter().any(|latched| !latched) {
+            let ram = self.cpu.memory.as_slice();
+            let fallback = renderer::ScanlineRegs {
+                lcdc: ram[0xFF40],
+                scy: ram[0xFF42],
+                scx: ram[0xFF43],
+                bgp: ram[0xFF47],
+                wy: ram[0xFF4A],
+                wx: ram[0xFF4B],
+            };
+            for (line, latched) in self.scanline_latched.iter().enumerate() {
+                if !latched {
+                    latches[line] = fallback;
+                }
+            }
+        }
+
+        renderer::render_frame_with_scanline_latches(
             self.cpu.memory.as_slice(),
             screen,
             &mut self.bg_opaque,
+            &latches,
         );
+    }
+
+    fn maybe_latch_scanline(&mut self, ly: u8, mode: u8) {
+        if mode != 3 || ly >= HEIGHT as u8 {
+            return;
+        }
+        let line = ly as usize;
+        if self.scanline_latched[line] {
+            return;
+        }
+
+        let ram = self.cpu.memory.as_slice();
+        self.scanline_latches[line] = renderer::ScanlineRegs {
+            lcdc: ram[0xFF40],
+            scy: ram[0xFF42],
+            scx: ram[0xFF43],
+            bgp: ram[0xFF47],
+            wy: ram[0xFF4A],
+            wx: ram[0xFF4B],
+        };
+        self.scanline_latched[line] = true;
     }
 
     fn request_dump(&mut self) {
