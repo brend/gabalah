@@ -485,4 +485,44 @@ mod tests {
         cpu.step();
         assert_eq!(cpu.total_cycles, 20);
     }
+
+    #[test]
+    fn test_halt_bug_duplicates_next_opcode_for_immediate_read() {
+        let mut cpu = setup();
+        cpu.write_byte(Addr(0xFFFF), 0x01); // IE: VBlank enabled
+        cpu.write_byte(Addr(0xFF0F), 0x01); // IF: VBlank pending
+
+        cpu.write_byte(Addr(0x100), 0x76); // HALT
+        cpu.write_byte(Addr(0x101), 0x06); // LD B,d8
+        cpu.write_byte(Addr(0x102), 0x00); // immediate (should be ignored due to HALT bug)
+
+        cpu.step(); // HALT (bugged path)
+        assert!(!cpu.halted, "HALT bug should not leave CPU halted");
+        assert_eq!(cpu.registers.pc, 0x101);
+
+        cpu.step(); // LD B,d8 with duplicated opcode byte
+        assert_eq!(cpu.registers.b, 0x06, "opcode byte should be read as immediate");
+        assert_eq!(cpu.registers.pc, 0x102, "PC should advance by one fewer byte");
+    }
+
+    #[test]
+    fn test_halt_bug_repeats_next_single_byte_opcode() {
+        let mut cpu = setup();
+        cpu.registers.b = 0;
+        cpu.write_byte(Addr(0xFFFF), 0x01); // IE: VBlank enabled
+        cpu.write_byte(Addr(0xFF0F), 0x01); // IF: VBlank pending
+
+        cpu.write_byte(Addr(0x100), 0x76); // HALT
+        cpu.write_byte(Addr(0x101), 0x04); // INC B
+        cpu.write_byte(Addr(0x102), 0x00); // NOP
+
+        cpu.step(); // HALT (bugged path)
+        cpu.step(); // INC B (first time)
+        assert_eq!(cpu.registers.b, 1);
+        assert_eq!(cpu.registers.pc, 0x101, "1-byte opcode should be fetched twice");
+
+        cpu.step(); // INC B (second time)
+        assert_eq!(cpu.registers.b, 2);
+        assert_eq!(cpu.registers.pc, 0x102);
+    }
 }

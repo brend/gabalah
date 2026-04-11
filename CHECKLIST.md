@@ -56,7 +56,7 @@ Items are ordered by dependency. Check off items as they are done and keep `STAT
 - [x] Timer overflow reload + interrupt request
 - [x] DIV write resets counter/register
 - [x] HALT wakeup on pending interrupt
-- [ ] HALT bug exact behavior (IME=0 + pending interrupt)
+- [x] HALT bug exact behavior (IME=0 + pending interrupt)
 - [ ] STOP behavior
 
 ---

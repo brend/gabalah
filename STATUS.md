@@ -11,7 +11,8 @@ Last updated: 2026-04-11
 - Stack operations: PUSH, POP, CALL, RET, RETI, RST
 - Conditional control flow (JR cc, JP cc, CALL cc, RET cc)
 - IME handling with delayed EI activation
-- HALT wakeup on pending interrupt (HALT bug still stubbed)
+- HALT wakeup on pending interrupt
+- HALT bug behavior implemented (`IME=0` + pending interrupt does not halt; next opcode fetch is duplicated)
 - Post-boot DMG0 register initialization
 
 ### Memory / IO
@@ -77,7 +78,6 @@ Last updated: 2026-04-11
 - Header checksum/global checksum are parsed but not yet enforced for ROM rejection
 - No save RAM persistence (`.sav`)
 - STOP remains a no-op
-- HALT bug behavior not fully implemented
 - Audio (APU) not implemented
 
 ## Test Coverage

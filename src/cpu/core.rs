@@ -17,6 +17,7 @@ pub struct Cpu {
     pub registers: Registers,
     pub total_cycles: u64,
     pending_ime: bool,
+    halt_bug_armed: bool,
     pub halted: bool,
 }
 
@@ -34,6 +35,7 @@ impl Cpu {
             registers: Registers::new(),
             total_cycles: 0,
             pending_ime: false,
+            halt_bug_armed: false,
             halted: false,
         }
     }
@@ -123,7 +125,14 @@ impl Cpu {
             self.total_cycles += 4;
             return 4;
         }
+
         let opcode = self.memory.read_byte(Addr(self.registers.pc));
+        if self.halt_bug_armed {
+            // HALT bug: the opcode fetch does not advance PC once, so execute using PC-1.
+            self.registers.pc = self.registers.pc.wrapping_sub(1);
+            self.halt_bug_armed = false;
+        }
+
         if opcode == 0xCB {
             let cb_opcode = self
                 .memory
@@ -298,9 +307,10 @@ impl Cpu {
             Halt => {
                 let pending = (ie_contents & if_contents) != 0;
                 if pending && !r.ime {
-                    // HALT bug: CPU fails to halt; next byte is read twice.
-                    // TODO: implement the double-read; for now just continue.
+                    self.halt_bug_armed = true;
+                    self.halted = false;
                 } else {
+                    self.halt_bug_armed = false;
                     self.halted = true;
                 }
             }
