@@ -1,6 +1,8 @@
 use crate::cartridge::{Cartridge, CartridgeHeader};
 
 const VISIBLE_ROM_END: usize = 0x7FFF;
+const EXTERNAL_RAM_START: usize = 0xA000;
+const EXTERNAL_RAM_END: usize = 0xBFFF;
 
 pub fn word(hi: u8, lo: u8) -> u16 {
     ((hi as u16) << 8) | lo as u16
@@ -219,6 +221,12 @@ impl Ram {
             self.sync_cartridge_visible_rom();
             return;
         }
+        if (EXTERNAL_RAM_START..=EXTERNAL_RAM_END).contains(&addr) && self.cartridge.is_some() {
+            if let Some(cartridge) = self.cartridge.as_mut() {
+                cartridge.write_external_ram(address.0, value);
+            }
+            return;
+        }
         // Echo RAM mirrors C000-DDFF.
         if (0xE000..=0xFDFF).contains(&addr) {
             self.cells[addr - 0x2000] = value;
@@ -242,6 +250,11 @@ impl Ram {
         let addr = address.0 as usize;
         if addr <= VISIBLE_ROM_END {
             return self.cells[addr];
+        }
+        if (EXTERNAL_RAM_START..=EXTERNAL_RAM_END).contains(&addr) && self.cartridge.is_some() {
+            if let Some(cartridge) = self.cartridge.as_ref() {
+                return cartridge.read_external_ram(address.0);
+            }
         }
         if address.0 == 0xFF00 {
             let mut lo = 0x0Fu8; // all buttons not pressed (active low)
@@ -329,6 +342,24 @@ impl Ram {
         self.cartridge
             .as_ref()
             .and_then(|cartridge| cartridge.header())
+    }
+
+    pub fn has_battery_backed_ram(&self) -> bool {
+        self.cartridge
+            .as_ref()
+            .is_some_and(Cartridge::has_battery_backed_ram)
+    }
+
+    pub fn battery_backed_ram(&self) -> Option<&[u8]> {
+        self.cartridge
+            .as_ref()
+            .and_then(Cartridge::battery_backed_ram)
+    }
+
+    pub fn load_battery_backed_ram(&mut self, data: &[u8]) -> bool {
+        self.cartridge
+            .as_mut()
+            .is_some_and(|cartridge| cartridge.load_battery_backed_ram(data))
     }
 
     /// Sets LY directly (used by PPU timing logic).

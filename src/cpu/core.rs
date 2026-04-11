@@ -48,6 +48,18 @@ impl Cpu {
         self.memory.cartridge_header()
     }
 
+    pub fn has_battery_backed_ram(&self) -> bool {
+        self.memory.has_battery_backed_ram()
+    }
+
+    pub fn battery_backed_ram(&self) -> Option<&[u8]> {
+        self.memory.battery_backed_ram()
+    }
+
+    pub fn load_battery_backed_ram(&mut self, data: &[u8]) -> bool {
+        self.memory.load_battery_backed_ram(data)
+    }
+
     pub fn read_byte(&self, address: Addr) -> u8 {
         self.memory.read_byte(address)
     }

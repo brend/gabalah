@@ -1,6 +1,8 @@
 use gabalah::{app, config, cpu::Cpu, rom_loader};
 use std::env;
-use std::path::Path;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 
 const MOONEYE_PASS: &[u8] = &[3, 5, 8, 13, 21, 34];
 
@@ -10,11 +12,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("{err}");
         std::process::exit(1);
     });
-    let rom = rom_loader::load_rom_from_path(Path::new(&cli.rom_path), cli.entry.as_deref())?;
+    let rom_input_path = Path::new(&cli.rom_path);
+    let rom = rom_loader::load_rom_from_path(rom_input_path, cli.entry.as_deref())?;
+    let save_path = derive_save_path(rom_input_path, cli.entry.as_deref());
 
     if let Some(frames) = cli.test_frames {
         let mut cpu = Cpu::new();
         cpu.load_rom(rom);
+        load_battery_ram_from_disk(&mut cpu, save_path.as_deref());
         let serial = app::run_headless(cpu, frames);
         if serial == MOONEYE_PASS {
             println!("PASS");
@@ -27,6 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut cpu = Cpu::new();
     cpu.load_rom(rom);
+    load_battery_ram_from_disk(&mut cpu, save_path.as_deref());
     let (backend_kind, backend_options) = config::load_graphics_settings()?;
     let window_scale = config::load_window_scale()?;
     let controls = config::load_controls()?;
@@ -38,6 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         window_scale,
         controls,
         debug_dump_settings,
+        save_path,
     )
 }
 
@@ -124,9 +131,57 @@ fn parse_cli_args(args: &[String]) -> Result<CliArgs, rom_loader::RomLoadError> 
     })
 }
 
+fn derive_save_path(rom_input_path: &Path, entry: Option<&str>) -> Option<PathBuf> {
+    if entry.is_some() {
+        return None;
+    }
+    if matches!(
+        rom_input_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase())
+            .as_deref(),
+        Some("zip" | "gz" | "7z")
+    ) {
+        return None;
+    }
+    Some(rom_input_path.with_extension("sav"))
+}
+
+fn load_battery_ram_from_disk(cpu: &mut Cpu, save_path: Option<&Path>) {
+    if !cpu.has_battery_backed_ram() {
+        return;
+    }
+    let Some(save_path) = save_path else {
+        eprintln!(
+            "Battery-backed cartridge detected, but save persistence is disabled for archive inputs."
+        );
+        return;
+    };
+
+    match fs::read(save_path) {
+        Ok(bytes) => {
+            if !cpu.load_battery_backed_ram(&bytes) {
+                eprintln!(
+                    "Ignoring save file '{}': cartridge does not expose battery-backed RAM.",
+                    save_path.to_string_lossy()
+                );
+            }
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => {}
+        Err(err) => {
+            eprintln!(
+                "Failed to read save file '{}': {err}",
+                save_path.to_string_lossy()
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_cli_args, CliArgs};
+    use super::{derive_save_path, parse_cli_args, CliArgs};
+    use std::path::Path;
 
     fn args(items: &[&str]) -> Vec<String> {
         items.iter().map(|item| item.to_string()).collect()
@@ -218,5 +273,24 @@ mod tests {
         assert!(err
             .to_string()
             .contains("unexpected extra positional argument"));
+    }
+
+    #[test]
+    fn derive_save_path_for_raw_rom() {
+        let path = derive_save_path(Path::new("roms/zelda.gb"), None)
+            .expect("raw ROM should map to a save path");
+        assert_eq!(path, Path::new("roms/zelda.sav"));
+    }
+
+    #[test]
+    fn derive_save_path_disables_archives() {
+        assert!(derive_save_path(Path::new("bundle.zip"), None).is_none());
+        assert!(derive_save_path(Path::new("bundle.gz"), None).is_none());
+        assert!(derive_save_path(Path::new("bundle.7z"), None).is_none());
+    }
+
+    #[test]
+    fn derive_save_path_disables_explicit_archive_entries() {
+        assert!(derive_save_path(Path::new("bundle.zip"), Some("games/zelda.gb")).is_none());
     }
 }

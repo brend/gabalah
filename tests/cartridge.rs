@@ -1,5 +1,6 @@
 use gabalah::cartridge::{Cartridge, CartridgeHeader, CartridgeType, CgbMode, Destination};
 use gabalah::cpu::Cpu;
+use gabalah::memory::Addr;
 
 fn build_rom() -> Vec<u8> {
     let mut rom = vec![0u8; 0x8000];
@@ -145,6 +146,17 @@ fn runtime_rom(cartridge_type: u8, rom_size_code: u8, banks: usize) -> Vec<u8> {
     rom
 }
 
+fn runtime_rom_with_ram(
+    cartridge_type: u8,
+    rom_size_code: u8,
+    banks: usize,
+    ram_size_code: u8,
+) -> Vec<u8> {
+    let mut rom = runtime_rom(cartridge_type, rom_size_code, banks);
+    rom[0x0149] = ram_size_code;
+    rom
+}
+
 #[test]
 fn runtime_rom_only_ignores_mapper_writes() {
     let rom = runtime_rom(0x00, 0x01, 4);
@@ -188,4 +200,54 @@ fn runtime_mbc1_switches_switchable_and_fixed_windows() {
         0x01,
         "zero bank request should still map bank 1 in switchable window"
     );
+}
+
+#[test]
+fn battery_backed_ram_can_be_exported_and_reloaded() {
+    let rom = runtime_rom_with_ram(0x03, 0x01, 4, 0x03); // MBC1+RAM+BATTERY, 4 RAM banks
+
+    let mut cpu = Cpu::new();
+    cpu.load_rom(rom.clone());
+    assert!(cpu.has_battery_backed_ram());
+
+    cpu.write_byte(Addr(0x0000), 0x0A); // enable RAM
+    cpu.write_byte(Addr(0xA000), 0x11); // bank 0
+    cpu.write_byte(Addr(0x6000), 0x01); // RAM banking mode
+    cpu.write_byte(Addr(0x4000), 0x01); // bank 1
+    cpu.write_byte(Addr(0xA000), 0x22); // bank 1
+
+    let snapshot = cpu
+        .battery_backed_ram()
+        .expect("battery-backed RAM should be exposed")
+        .to_vec();
+    assert_eq!(snapshot.len(), 4 * 8 * 1024);
+
+    let mut restored = Cpu::new();
+    restored.load_rom(rom);
+    assert!(restored.load_battery_backed_ram(&snapshot));
+
+    restored.write_byte(Addr(0x0000), 0x0A); // enable RAM
+    assert_eq!(
+        restored.read_byte(Addr(0xA000)),
+        0x11,
+        "bank 0 should restore"
+    );
+    restored.write_byte(Addr(0x6000), 0x01); // RAM banking mode
+    restored.write_byte(Addr(0x4000), 0x01); // bank 1
+    assert_eq!(
+        restored.read_byte(Addr(0xA000)),
+        0x22,
+        "bank 1 should restore"
+    );
+}
+
+#[test]
+fn non_battery_cartridge_does_not_expose_persistent_ram_interface() {
+    let rom = runtime_rom_with_ram(0x02, 0x01, 4, 0x03); // MBC1+RAM without battery
+    let mut cpu = Cpu::new();
+    cpu.load_rom(rom);
+
+    assert!(!cpu.has_battery_backed_ram());
+    assert!(cpu.battery_backed_ram().is_none());
+    assert!(!cpu.load_battery_backed_ram(&[0x12, 0x34]));
 }

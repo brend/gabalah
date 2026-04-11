@@ -10,6 +10,7 @@ use crate::ui::{self, GraphicsBackendKind, GraphicsOptions};
 use log::{debug, error, warn};
 use std::fs::{self, File};
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use winit::{
     dpi::LogicalSize,
@@ -41,6 +42,7 @@ pub fn run_loop(
     window_scale: f64,
     controls: Controls,
     debug_dump_settings: DebugDumpSettings,
+    save_path: Option<PathBuf>,
 ) -> ui::UiResult<()> {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
@@ -80,6 +82,7 @@ pub fn run_loop(
             emulator.maybe_dump_frame(frame);
             if let Err(err) = graphics.present() {
                 log_error("graphics.present", err.as_ref());
+                persist_battery_ram(&emulator.cpu, save_path.as_deref());
                 elwt.exit();
                 return;
             }
@@ -87,6 +90,7 @@ pub fn run_loop(
 
         if input.update(&event) {
             if input.key_pressed(controls.hotkeys.exit) || input.close_requested() {
+                persist_battery_ram(&emulator.cpu, save_path.as_deref());
                 elwt.exit();
                 return;
             }
@@ -144,6 +148,7 @@ pub fn run_loop(
                     }
                     Err(err) => {
                         log_error("graphics.cycle_shader_next", err.as_ref());
+                        persist_battery_ram(&emulator.cpu, save_path.as_deref());
                         elwt.exit();
                         return;
                     }
@@ -164,6 +169,7 @@ pub fn run_loop(
                     }
                     Err(err) => {
                         log_error("graphics.cycle_shader_prev", err.as_ref());
+                        persist_battery_ram(&emulator.cpu, save_path.as_deref());
                         elwt.exit();
                         return;
                     }
@@ -187,6 +193,7 @@ pub fn run_loop(
                             configured_options.shader.active_file.clone();
                         if let Err(err) = graphics.reload_options(configured_options) {
                             log_error("graphics.reload_options", err.as_ref());
+                            persist_battery_ram(&emulator.cpu, save_path.as_deref());
                             elwt.exit();
                             return;
                         }
@@ -198,6 +205,7 @@ pub fn run_loop(
                             }
                             Err(err) => {
                                 log_error("graphics.reload_shader_library", err.as_ref());
+                                persist_battery_ram(&emulator.cpu, save_path.as_deref());
                                 elwt.exit();
                                 return;
                             }
@@ -218,6 +226,7 @@ pub fn run_loop(
             if let Some(size) = input.window_resized() {
                 if let Err(err) = graphics.resize_surface(size.width, size.height) {
                     log_error("graphics.resize_surface", err.as_ref());
+                    persist_battery_ram(&emulator.cpu, save_path.as_deref());
                     elwt.exit();
                     return;
                 }
@@ -260,6 +269,21 @@ fn log_error(method_name: &str, err: &dyn std::error::Error) {
     while let Some(cause) = source {
         error!("  Caused by: {cause}");
         source = cause.source();
+    }
+}
+
+fn persist_battery_ram(cpu: &Cpu, save_path: Option<&Path>) {
+    let Some(save_path) = save_path else {
+        return;
+    };
+    let Some(ram) = cpu.battery_backed_ram() else {
+        return;
+    };
+    if let Err(err) = fs::write(save_path, ram) {
+        warn!(
+            "Failed to persist battery RAM to '{}': {err}",
+            save_path.to_string_lossy()
+        );
     }
 }
 

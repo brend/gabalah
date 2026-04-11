@@ -271,6 +271,15 @@ mod tests {
 
     // --- Memory map behavior ---
 
+    fn runtime_mbc1_rom_with_ram(cartridge_type: u8, ram_size_code: u8) -> Vec<u8> {
+        let mut rom = vec![0u8; 4 * 16 * 1024];
+        rom[0x0143] = 0x00; // DMG mode
+        rom[0x0147] = cartridge_type;
+        rom[0x0148] = 0x01; // 4 ROM banks
+        rom[0x0149] = ram_size_code;
+        rom
+    }
+
     #[test]
     fn writes_to_rom_are_ignored() {
         let mut ram = Ram::new();
@@ -367,6 +376,132 @@ mod tests {
             ram.read_byte(Addr(0x0000)),
             0x20,
             "mode 1 should remap fixed window to bank 32"
+        );
+    }
+
+    #[test]
+    fn mbc1_external_ram_reads_ff_and_ignores_writes_while_disabled() {
+        let rom = runtime_mbc1_rom_with_ram(0x02, 0x03); // MBC1+RAM, 4 RAM banks
+        let mut ram = Ram::new();
+        ram.load_rom(rom);
+
+        assert_eq!(
+            ram.read_byte(Addr(0xA000)),
+            0xFF,
+            "disabled external RAM should read as 0xFF"
+        );
+        ram.write_byte(Addr(0xA000), 0x42);
+        assert_eq!(
+            ram.read_byte(Addr(0xA000)),
+            0xFF,
+            "writes must be ignored while external RAM is disabled"
+        );
+
+        ram.write_byte(Addr(0x0000), 0x0A); // enable external RAM
+        assert_eq!(
+            ram.read_byte(Addr(0xA000)),
+            0xFF,
+            "ignored writes should not appear after enabling RAM"
+        );
+    }
+
+    #[test]
+    fn mbc1_external_ram_enable_with_0a_allows_bank0_read_write() {
+        let rom = runtime_mbc1_rom_with_ram(0x02, 0x03); // MBC1+RAM, 4 RAM banks
+        let mut ram = Ram::new();
+        ram.load_rom(rom);
+
+        ram.write_byte(Addr(0x0000), 0x0A); // enable external RAM
+        ram.write_byte(Addr(0xA000), 0x77);
+        assert_eq!(ram.read_byte(Addr(0xA000)), 0x77);
+    }
+
+    #[test]
+    fn mbc1_external_ram_mode1_uses_4000_register_for_bank_switching() {
+        let rom = runtime_mbc1_rom_with_ram(0x02, 0x03); // MBC1+RAM, 4 RAM banks
+        let mut ram = Ram::new();
+        ram.load_rom(rom);
+
+        ram.write_byte(Addr(0x0000), 0x0A); // enable external RAM
+        ram.write_byte(Addr(0xA000), 0x11); // bank 0
+
+        ram.write_byte(Addr(0x6000), 0x01); // mode 1 = RAM banking mode
+
+        ram.write_byte(Addr(0x4000), 0x01); // RAM bank 1
+        assert_eq!(
+            ram.read_byte(Addr(0xA000)),
+            0xFF,
+            "bank 1 should be distinct"
+        );
+        ram.write_byte(Addr(0xA000), 0x22);
+
+        ram.write_byte(Addr(0x4000), 0x02); // RAM bank 2
+        assert_eq!(
+            ram.read_byte(Addr(0xA000)),
+            0xFF,
+            "bank 2 should be distinct"
+        );
+        ram.write_byte(Addr(0xA000), 0x33);
+
+        ram.write_byte(Addr(0x4000), 0x01);
+        assert_eq!(
+            ram.read_byte(Addr(0xA000)),
+            0x22,
+            "bank 1 data should persist"
+        );
+
+        ram.write_byte(Addr(0x4000), 0x00);
+        assert_eq!(
+            ram.read_byte(Addr(0xA000)),
+            0x11,
+            "bank 0 data should persist"
+        );
+    }
+
+    #[test]
+    fn mbc1_external_ram_returns_to_bank0_when_mode0_selected() {
+        let rom = runtime_mbc1_rom_with_ram(0x02, 0x03); // MBC1+RAM, 4 RAM banks
+        let mut ram = Ram::new();
+        ram.load_rom(rom);
+
+        ram.write_byte(Addr(0x0000), 0x0A); // enable external RAM
+        ram.write_byte(Addr(0xA000), 0x44); // bank 0 data
+
+        ram.write_byte(Addr(0x6000), 0x01); // mode 1
+        ram.write_byte(Addr(0x4000), 0x01); // RAM bank 1
+        ram.write_byte(Addr(0xA000), 0x55); // bank 1 data
+        assert_eq!(ram.read_byte(Addr(0xA000)), 0x55, "bank 1 should be active");
+
+        ram.write_byte(Addr(0x6000), 0x00); // mode 0: force RAM bank 0
+        assert_eq!(
+            ram.read_byte(Addr(0xA000)),
+            0x44,
+            "mode 0 should force external RAM bank 0"
+        );
+
+        ram.write_byte(Addr(0x4000), 0x03); // ignored for RAM bank in mode 0
+        assert_eq!(
+            ram.read_byte(Addr(0xA000)),
+            0x44,
+            "0x4000 register must not change RAM bank in mode 0"
+        );
+    }
+
+    #[test]
+    fn mbc1_without_external_ram_always_reads_ff_and_ignores_writes() {
+        let rom = runtime_mbc1_rom_with_ram(0x01, 0x00); // MBC1 without RAM
+        let mut ram = Ram::new();
+        ram.load_rom(rom);
+
+        ram.write_byte(Addr(0x0000), 0x0A); // enable command should have no effect without RAM
+        ram.write_byte(Addr(0x6000), 0x01);
+        ram.write_byte(Addr(0x4000), 0x02);
+        ram.write_byte(Addr(0xA000), 0x99);
+
+        assert_eq!(
+            ram.read_byte(Addr(0xA000)),
+            0xFF,
+            "MBC1 cartridges without RAM should never expose external RAM"
         );
     }
 

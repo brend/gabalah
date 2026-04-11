@@ -4,9 +4,12 @@ use std::str;
 use log::warn;
 
 const ROM_BANK_SIZE: usize = 16 * 1024;
+const EXTERNAL_RAM_BANK_SIZE: usize = 8 * 1024;
 const FIXED_ROM_END: usize = 0x3FFF;
 const SWITCHABLE_ROM_START: usize = 0x4000;
 const SWITCHABLE_ROM_END: usize = 0x7FFF;
+const EXTERNAL_RAM_START: usize = 0xA000;
+const EXTERNAL_RAM_END: usize = 0xBFFF;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -487,6 +490,7 @@ impl CartridgeHeader {
 #[derive(Debug, Clone)]
 pub struct Cartridge {
     rom: Vec<u8>,
+    external_ram: Vec<u8>,
     header: Option<CartridgeHeader>,
     mapper: MapperState,
 }
@@ -502,6 +506,7 @@ struct Mbc1State {
     rom_bank_low5: u8,
     bank_high2: u8,
     mode: u8,
+    ram_enabled: bool,
 }
 
 impl Default for Mbc1State {
@@ -510,6 +515,7 @@ impl Default for Mbc1State {
             rom_bank_low5: 1,
             bank_high2: 0,
             mode: 0,
+            ram_enabled: false,
         }
     }
 }
@@ -533,6 +539,7 @@ impl Cartridge {
 
         Self {
             rom,
+            external_ram: vec![0xFF; Self::external_ram_len(header.as_ref())],
             header,
             mapper,
         }
@@ -567,13 +574,54 @@ impl Cartridge {
         };
 
         match address {
-            0x0000..=0x1FFF => {
-                // MBC1 external RAM enable is intentionally not implemented yet.
-            }
+            0x0000..=0x1FFF => state.ram_enabled = value & 0x0F == 0x0A,
             0x2000..=0x3FFF => state.rom_bank_low5 = value & 0x1F,
             0x4000..=0x5FFF => state.bank_high2 = value & 0x03,
             0x6000..=0x7FFF => state.mode = value & 0x01,
             _ => {}
+        }
+    }
+
+    pub fn has_battery_backed_ram(&self) -> bool {
+        self.has_battery() && !self.external_ram.is_empty()
+    }
+
+    pub fn battery_backed_ram(&self) -> Option<&[u8]> {
+        if !self.has_battery_backed_ram() {
+            return None;
+        }
+        Some(&self.external_ram)
+    }
+
+    pub fn load_battery_backed_ram(&mut self, data: &[u8]) -> bool {
+        if !self.has_battery_backed_ram() {
+            return false;
+        }
+        self.external_ram.fill(0xFF);
+        let copy_len = self.external_ram.len().min(data.len());
+        self.external_ram[..copy_len].copy_from_slice(&data[..copy_len]);
+        true
+    }
+
+    pub(crate) fn read_external_ram(&self, address: u16) -> u8 {
+        if !self.external_ram_accessible() {
+            return 0xFF;
+        }
+        let Some(index) = self.external_ram_index(address) else {
+            return 0xFF;
+        };
+        self.external_ram.get(index).copied().unwrap_or(0xFF)
+    }
+
+    pub(crate) fn write_external_ram(&mut self, address: u16, value: u8) {
+        if !self.external_ram_accessible() {
+            return;
+        }
+        let Some(index) = self.external_ram_index(address) else {
+            return;
+        };
+        if let Some(byte) = self.external_ram.get_mut(index) {
+            *byte = value;
         }
     }
 
@@ -640,5 +688,76 @@ impl Cartridge {
             return header.rom_bank_count.max(1);
         }
         self.rom.len().div_ceil(ROM_BANK_SIZE).max(1)
+    }
+
+    fn external_ram_accessible(&self) -> bool {
+        if self.external_ram.is_empty() {
+            return false;
+        }
+        match self.mapper {
+            MapperState::RomOnly => true,
+            MapperState::Mbc1(state) => state.ram_enabled,
+        }
+    }
+
+    fn external_ram_bank(&self) -> usize {
+        let bank_count = self.external_ram_bank_count();
+        if bank_count <= 1 {
+            return 0;
+        }
+
+        match self.mapper {
+            MapperState::RomOnly => 0,
+            MapperState::Mbc1(state) => {
+                let bank = if state.mode == 0 {
+                    0
+                } else {
+                    (state.bank_high2 & 0x03) as usize
+                };
+                bank % bank_count
+            }
+        }
+    }
+
+    fn external_ram_bank_count(&self) -> usize {
+        self.external_ram.len() / EXTERNAL_RAM_BANK_SIZE
+    }
+
+    fn external_ram_index(&self, address: u16) -> Option<usize> {
+        let addr = address as usize;
+        if !(EXTERNAL_RAM_START..=EXTERNAL_RAM_END).contains(&addr) {
+            return None;
+        }
+
+        let bank = self.external_ram_bank();
+        let offset = addr - EXTERNAL_RAM_START;
+        Some(
+            bank.saturating_mul(EXTERNAL_RAM_BANK_SIZE)
+                .saturating_add(offset),
+        )
+    }
+
+    fn external_ram_len(header: Option<&CartridgeHeader>) -> usize {
+        let banks = header.map(|h| h.ram_bank_count).unwrap_or(0);
+        banks.saturating_mul(EXTERNAL_RAM_BANK_SIZE)
+    }
+
+    fn has_battery(&self) -> bool {
+        matches!(
+            self.header.as_ref().map(|h| h.cartridge_type),
+            Some(
+                CartridgeType::Mbc1RamBattery
+                    | CartridgeType::Mbc2Battery
+                    | CartridgeType::RomRamBattery11
+                    | CartridgeType::Mmm01RamBattery
+                    | CartridgeType::Mbc3TimerBattery
+                    | CartridgeType::Mbc3TimerRamBattery12
+                    | CartridgeType::Mbc3RamBattery12
+                    | CartridgeType::Mbc5RamBattery
+                    | CartridgeType::Mbc5RumbleRamBattery
+                    | CartridgeType::Mbc7SensorRumbleRamBattery
+                    | CartridgeType::HuC1RamBattery
+            )
+        )
     }
 }
