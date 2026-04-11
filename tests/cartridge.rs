@@ -1,4 +1,4 @@
-use gabalah::cartridge::{CartridgeHeader, CartridgeType, CgbMode, Destination};
+use gabalah::cartridge::{Cartridge, CartridgeHeader, CartridgeType, CgbMode, Destination};
 use gabalah::cpu::Cpu;
 
 fn build_rom() -> Vec<u8> {
@@ -132,4 +132,60 @@ fn global_checksum_detects_tampered_rom_bytes() {
     rom[0x0200] ^= 0xFF; // mutate data outside checksum fields
     let header = CartridgeHeader::from_bytes(&rom).expect("header should still parse");
     assert_ne!(compute_global_checksum(&rom), header.global_checksum);
+}
+
+fn runtime_rom(cartridge_type: u8, rom_size_code: u8, banks: usize) -> Vec<u8> {
+    let mut rom = vec![0u8; banks * 16 * 1024];
+    rom[0x0143] = 0x00; // DMG mode
+    rom[0x0147] = cartridge_type;
+    rom[0x0148] = rom_size_code;
+    for bank in 0..banks {
+        rom[bank * 16 * 1024] = bank as u8;
+    }
+    rom
+}
+
+#[test]
+fn runtime_rom_only_ignores_mapper_writes() {
+    let rom = runtime_rom(0x00, 0x01, 4);
+    let mut cartridge = Cartridge::new(rom);
+
+    assert_eq!(cartridge.read_byte(0x0000), 0x00);
+    assert_eq!(cartridge.read_byte(0x4000), 0x01);
+
+    cartridge.write_rom_control(0x2000, 0x02);
+    cartridge.write_rom_control(0x4000, 0x03);
+    cartridge.write_rom_control(0x6000, 0x01);
+
+    assert_eq!(cartridge.read_byte(0x0000), 0x00);
+    assert_eq!(cartridge.read_byte(0x4000), 0x01);
+}
+
+#[test]
+fn runtime_mbc1_switches_switchable_and_fixed_windows() {
+    let rom = runtime_rom(0x01, 0x05, 64);
+    let mut cartridge = Cartridge::new(rom);
+
+    assert_eq!(cartridge.read_byte(0x4000), 0x01, "bank 1 initially mapped");
+
+    cartridge.write_rom_control(0x2000, 0x02);
+    assert_eq!(cartridge.read_byte(0x4000), 0x02, "bank 2 should map");
+
+    cartridge.write_rom_control(0x2000, 0x01);
+    cartridge.write_rom_control(0x4000, 0x01);
+    assert_eq!(cartridge.read_byte(0x4000), 0x21, "bank 33 should map");
+
+    cartridge.write_rom_control(0x6000, 0x01); // mode 1
+    assert_eq!(
+        cartridge.read_byte(0x0000),
+        0x20,
+        "fixed window should map bank 32"
+    );
+
+    cartridge.write_rom_control(0x2000, 0x00);
+    assert_eq!(
+        cartridge.read_byte(0x4000),
+        0x01,
+        "zero bank request should still map bank 1 in switchable window"
+    );
 }

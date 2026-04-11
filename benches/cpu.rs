@@ -33,10 +33,10 @@ fn make_loop_cpu() -> Cpu {
 
 /// Keeps LCD timing and STAT mode/coincidence bits in sync with the app loop.
 fn tick_lcd(cpu: &mut Cpu, cycles: usize, ppu_line_cycles: &mut usize) {
-    let lcdc = cpu.memory.read_byte(Addr(0xFF40));
+    let lcdc = cpu.read_byte(Addr(0xFF40));
     if (lcdc & 0x80) == 0 {
         *ppu_line_cycles = 0;
-        cpu.memory.set_ly_raw(0);
+        cpu.set_ly_raw(0);
         update_stat(cpu, 0, false, false);
         return;
     }
@@ -44,15 +44,15 @@ fn tick_lcd(cpu: &mut Cpu, cycles: usize, ppu_line_cycles: &mut usize) {
     *ppu_line_cycles += cycles;
     while *ppu_line_cycles >= 456 {
         *ppu_line_cycles -= 456;
-        let ly = cpu.memory.read_byte(Addr(0xFF44));
+        let ly = cpu.read_byte(Addr(0xFF44));
         let new_ly = if ly >= 153 { 0 } else { ly + 1 };
-        cpu.memory.set_ly_raw(new_ly);
+        cpu.set_ly_raw(new_ly);
         if new_ly == 144 {
             cpu.raise_if(0x01);
         }
     }
 
-    let ly = cpu.memory.read_byte(Addr(0xFF44));
+    let ly = cpu.read_byte(Addr(0xFF44));
     let mode = if ly >= 144 {
         1
     } else if *ppu_line_cycles < 80 {
@@ -62,19 +62,19 @@ fn tick_lcd(cpu: &mut Cpu, cycles: usize, ppu_line_cycles: &mut usize) {
     } else {
         0
     };
-    let lyc = cpu.memory.read_byte(Addr(0xFF45));
+    let lyc = cpu.read_byte(Addr(0xFF45));
     update_stat(cpu, mode, ly == lyc, false);
 }
 
 fn update_stat(cpu: &mut Cpu, mode: u8, coincidence: bool, allow_interrupt: bool) {
-    let old_stat = cpu.memory.read_byte(Addr(0xFF41));
+    let old_stat = cpu.read_byte(Addr(0xFF41));
     let old_mode = old_stat & 0x03;
     let old_coincidence = (old_stat & 0x04) != 0;
     let mut new_stat = (old_stat & 0x78) | (mode & 0x03);
     if coincidence {
         new_stat |= 0x04;
     }
-    cpu.memory.set_stat_raw(new_stat);
+    cpu.set_stat_raw(new_stat);
 
     if !allow_interrupt {
         return;
@@ -105,8 +105,7 @@ fn interrupt(cpu: &mut Cpu) -> usize {
         if pending & (1 << bit) != 0 {
             cpu.clear_if(1 << bit);
             let vector = 0x0040u16 + (bit as u16) * 8;
-            cpu.memory
-                .write_word(Addr(cpu.registers.sp.wrapping_sub(2)), cpu.registers.pc);
+            cpu.write_word(Addr(cpu.registers.sp.wrapping_sub(2)), cpu.registers.pc);
             cpu.registers.sp = cpu.registers.sp.wrapping_sub(2);
             cpu.registers.pc = vector;
             cpu.total_cycles += INTERRUPT_SERVICE_CYCLES as u64;
@@ -122,14 +121,14 @@ fn step_cycles(cpu: &mut Cpu, cycle_budget: usize, ppu_line_cycles: &mut usize) 
         let cycles = cpu.step();
         cycles_this_step += cycles;
         tick_lcd(cpu, cycles, ppu_line_cycles);
-        if cpu.memory.tick(cycles as u32) {
+        if cpu.tick_timers(cycles as u32) {
             cpu.raise_if(0x04);
         }
         if is_interrupt_pending(cpu) {
             let interrupt_cycles = interrupt(cpu);
             cycles_this_step += interrupt_cycles;
             tick_lcd(cpu, interrupt_cycles, ppu_line_cycles);
-            if cpu.memory.tick(interrupt_cycles as u32) {
+            if cpu.tick_timers(interrupt_cycles as u32) {
                 cpu.raise_if(0x04);
             }
         }

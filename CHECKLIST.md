@@ -14,7 +14,7 @@ Items are ordered by dependency. Check off items as they are done and keep `STAT
 - [x] Correct post-boot SP (`0xFFFE`)
 - [x] Initialize post-boot DMG0 CPU and key IO defaults
 - [x] Parse cartridge header metadata (title/type/ROM size/RAM size)
-- [ ] Add explicit cartridge abstraction type
+- [x] Add explicit cartridge abstraction type
 - [x] Add frame limiter (~59.7 fps)
 
 ---
@@ -76,7 +76,7 @@ Items are ordered by dependency. Check off items as they are done and keep `STAT
 - [x] Ignore ROM writes after ROM load (`0x0000..0x7FFF`)
 - [x] Echo RAM mirror (`0xE000..0xFDFF`)
 - [x] Unusable area semantics (`0xFEA0..0xFEFF`)
-- [ ] ROM-only cartridge abstraction (`type 0x00`) via mapper layer
+- [x] ROM-only cartridge abstraction (`type 0x00`) via mapper layer
 - [x] MBC1 ROM bank switching (lower/upper bank bits + mode select)
 - [ ] MBC1 external RAM banking/enable behavior
 - [ ] MBC3 support

@@ -1,9 +1,5 @@
-use crate::cartridge::{CartridgeHeader, CartridgeType};
-use log::warn;
+use crate::cartridge::{Cartridge, CartridgeHeader};
 
-const ROM_BANK_SIZE: usize = 16 * 1024;
-const SWITCHABLE_ROM_START: usize = 0x4000;
-const SWITCHABLE_ROM_END: usize = 0x7FFF;
 const VISIBLE_ROM_END: usize = 0x7FFF;
 
 pub fn word(hi: u8, lo: u8) -> u16 {
@@ -127,15 +123,7 @@ impl Default for Ram {
 #[derive(Debug)]
 pub struct Ram {
     cells: [u8; RAM_SIZE],
-    rom_loaded: bool,
-    cartridge_rom: Vec<u8>,
-    cartridge_header: Option<CartridgeHeader>,
-    /// MBC1 register: lower 5 bits of ROM bank number (0 maps to 1).
-    mbc1_rom_bank_low5: u8,
-    /// MBC1 register: upper 2 bits (ROM high bits in mode 0, RAM bank in mode 1).
-    mbc1_bank_high2: u8,
-    /// MBC1 mode register (0 = ROM banking mode, 1 = RAM banking mode).
-    mbc1_mode: u8,
+    cartridge: Option<Cartridge>,
     /// Bits 4-5 of the last write to 0xFF00: selects which button group to read
     joypad_select: u8,
     /// Active-high bitmask of pressed action buttons (bit 0=A, 1=B, 2=Select, 3=Start)
@@ -155,12 +143,7 @@ impl Ram {
     pub fn new() -> Ram {
         let mut ram = Ram {
             cells: [0; RAM_SIZE],
-            rom_loaded: false,
-            cartridge_rom: Vec::new(),
-            cartridge_header: None,
-            mbc1_rom_bank_low5: 1,
-            mbc1_bank_high2: 0,
-            mbc1_mode: 0,
+            cartridge: None,
             joypad_select: 0x30,
             action_buttons: 0,
             direction_buttons: 0,
@@ -180,21 +163,18 @@ impl Ram {
 
     /// Loads a ROM into memory
     pub fn load_rom(&mut self, rom: Vec<u8>) {
-        self.cartridge_header = match CartridgeHeader::from_bytes(&rom) {
-            Ok(header) => Some(header),
-            Err(err) => {
-                warn!("Failed to parse cartridge header metadata: {err}");
-                None
-            }
-        };
-        self.cartridge_rom = rom;
-        self.cells[0x0000..=VISIBLE_ROM_END].fill(0xFF);
-        self.mbc1_rom_bank_low5 = 1;
-        self.mbc1_bank_high2 = 0;
-        self.mbc1_mode = 0;
-        self.load_fixed_rom_bank(0);
-        self.load_rom_bank(1);
-        self.rom_loaded = true;
+        self.cartridge = Some(Cartridge::new(rom));
+        self.sync_cartridge_visible_rom();
+    }
+
+    fn sync_cartridge_visible_rom(&mut self) {
+        if let Some(cartridge) = self.cartridge.as_ref() {
+            let (fixed, rest) = self.cells.split_at_mut(0x4000);
+            let switchable = &mut rest[..0x4000];
+            cartridge.copy_visible_windows_into(fixed, switchable);
+        } else {
+            self.cells[0x0000..=VISIBLE_ROM_END].fill(0xFF);
+        }
     }
 
     /// Sets the byte at the specified address to the specified value
@@ -231,9 +211,12 @@ impl Ram {
             self.cells[0xFF44] = 0;
             return;
         }
-        // Cartridge ROM area. After a cartridge is loaded, writes are ignored.
-        if self.rom_loaded && addr <= VISIBLE_ROM_END {
-            self.handle_write_with_mbc(address, value);
+        // Cartridge ROM area. After a cartridge is loaded, writes are delegated to mapper control.
+        if addr <= VISIBLE_ROM_END && self.cartridge.is_some() {
+            if let Some(cartridge) = self.cartridge.as_mut() {
+                cartridge.write_rom_control(address.0, value);
+            }
+            self.sync_cartridge_visible_rom();
             return;
         }
         // Echo RAM mirrors C000-DDFF.
@@ -248,129 +231,6 @@ impl Ram {
         self.cells[addr] = value;
     }
 
-    /// Handles writes to cartridge ROM area with MBC support (if applicable)
-    fn handle_write_with_mbc(&mut self, address: Addr, value: u8) {
-        match self.cartridge_header.as_ref() {
-            Some(header) => match header.cartridge_type {
-                CartridgeType::Mbc1 | CartridgeType::Mbc1Ram | CartridgeType::Mbc1RamBattery => {
-                    let addr = address.0 as usize;
-
-                    match addr {
-                        0x0000..=0x1FFF => {
-                            // 0x0000-0x1FFF: RAM Enable
-                            //self.ram_enabled = value & 0x0F == 0x0A;
-                            // Cartridge RAM is not wired yet.
-                        }
-                        0x2000..=0x3FFF => {
-                            // 0x2000-0x3FFF: ROM Bank Number (lower 5 bits)
-                            self.mbc1_rom_bank_low5 = value & 0x1F;
-                            self.refresh_mbc1_banks();
-                        }
-                        0x4000..=0x5FFF => {
-                            // 0x4000-0x5FFF: RAM Bank Number or upper 2 bits of ROM Bank Number
-                            self.mbc1_bank_high2 = value & 0x03;
-                            self.refresh_mbc1_banks();
-                        }
-                        0x6000..=0x7FFF => {
-                            // 0x6000-0x7FFF: ROM/RAM mode select
-                            self.mbc1_mode = value & 0x01;
-                            self.refresh_mbc1_banks();
-                        }
-                        _ => {}
-                    }
-                }
-                CartridgeType::Rom => {}
-                _ => {}
-            },
-            _ => {}
-        }
-    }
-
-    fn load_rom_bank(&mut self, bank: usize) {
-        if self.cartridge_rom.is_empty() {
-            return;
-        }
-
-        let bank_count = self.rom_bank_count();
-        let effective_bank = self.normalize_switchable_rom_bank(bank, bank_count);
-
-        let src_start = effective_bank * ROM_BANK_SIZE;
-        let src_end = (src_start + ROM_BANK_SIZE).min(self.cartridge_rom.len());
-        let dst = &mut self.cells[SWITCHABLE_ROM_START..=SWITCHABLE_ROM_END];
-        dst.fill(0xFF);
-
-        if src_start < self.cartridge_rom.len() {
-            let src = &self.cartridge_rom[src_start..src_end];
-            dst[..src.len()].copy_from_slice(src);
-        }
-    }
-
-    fn load_fixed_rom_bank(&mut self, bank: usize) {
-        if self.cartridge_rom.is_empty() {
-            return;
-        }
-
-        let bank_count = self.rom_bank_count();
-        let effective_bank = bank % bank_count;
-        let src_start = effective_bank * ROM_BANK_SIZE;
-        let src_end = (src_start + ROM_BANK_SIZE).min(self.cartridge_rom.len());
-        let dst = &mut self.cells[0x0000..ROM_BANK_SIZE];
-        dst.fill(0xFF);
-
-        if src_start < self.cartridge_rom.len() {
-            let src = &self.cartridge_rom[src_start..src_end];
-            dst[..src.len()].copy_from_slice(src);
-        }
-    }
-
-    fn normalize_switchable_rom_bank(&self, bank: usize, bank_count: usize) -> usize {
-        if bank_count <= 1 {
-            return 0;
-        }
-
-        let mut selected = bank;
-        if matches!(
-            self.cartridge_header.as_ref().map(|h| h.cartridge_type),
-            Some(CartridgeType::Mbc1 | CartridgeType::Mbc1Ram | CartridgeType::Mbc1RamBattery)
-        ) {
-            // MBC1 forbids selecting a switchable bank where lower five bits are zero.
-            if (selected & 0x1F) == 0 {
-                selected |= 0x01;
-            }
-        } else if selected == 0 {
-            selected = 1;
-        }
-
-        selected % bank_count
-    }
-
-    fn refresh_mbc1_banks(&mut self) {
-        let low5 = {
-            let mut v = (self.mbc1_rom_bank_low5 & 0x1F) as usize;
-            if v == 0 {
-                v = 1;
-            }
-            v
-        };
-        let high2 = (self.mbc1_bank_high2 & 0x03) as usize;
-
-        let (fixed_bank, switchable_bank) = if self.mbc1_mode == 0 {
-            (0usize, (high2 << 5) | low5)
-        } else {
-            ((high2 << 5), low5)
-        };
-
-        self.load_fixed_rom_bank(fixed_bank);
-        self.load_rom_bank(switchable_bank);
-    }
-
-    fn rom_bank_count(&self) -> usize {
-        if let Some(header) = self.cartridge_header.as_ref() {
-            return header.rom_bank_count.max(1);
-        }
-        self.cartridge_rom.len().div_ceil(ROM_BANK_SIZE).max(1)
-    }
-
     /// Sets the word at the specified address to the specified value
     pub fn write_word(&mut self, address: Addr, value: u16) {
         self.cells[address.0 as usize] = lo(value);
@@ -380,6 +240,9 @@ impl Ram {
     /// Retrieves the byte at the specified address
     pub fn read_byte(&self, address: Addr) -> u8 {
         let addr = address.0 as usize;
+        if addr <= VISIBLE_ROM_END {
+            return self.cells[addr];
+        }
         if address.0 == 0xFF00 {
             let mut lo = 0x0Fu8; // all buttons not pressed (active low)
             if self.joypad_select & 0x20 == 0 {
@@ -463,7 +326,9 @@ impl Ram {
 
     #[allow(dead_code)]
     pub fn cartridge_header(&self) -> Option<&CartridgeHeader> {
-        self.cartridge_header.as_ref()
+        self.cartridge
+            .as_ref()
+            .and_then(|cartridge| cartridge.header())
     }
 
     /// Sets LY directly (used by PPU timing logic).

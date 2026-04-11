@@ -20,8 +20,8 @@ mod tests {
             2,
             8,
         );
-        cpu.memory.write_byte(Addr(0x100), 0x42);
-        cpu.memory.write_byte(Addr(cpu.registers.pc + 1), 0x42);
+        cpu.write_byte(Addr(0x100), 0x42);
+        cpu.write_byte(Addr(cpu.registers.pc + 1), 0x42);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.a, 0x42);
     }
@@ -87,7 +87,7 @@ mod tests {
             1,
             4,
         );
-        cpu.memory.write_byte(Addr(cpu.registers.pc + 1), 0x05);
+        cpu.write_byte(Addr(cpu.registers.pc + 1), 0x05);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.a, 0x15);
     }
@@ -101,7 +101,7 @@ mod tests {
             1,
             4,
         );
-        cpu.memory.write_byte(Addr(cpu.registers.pc + 1), 0x01);
+        cpu.write_byte(Addr(cpu.registers.pc + 1), 0x01);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.a, 0x00);
         assert_eq!(
@@ -119,7 +119,7 @@ mod tests {
             1,
             4,
         );
-        cpu.memory.write_byte(Addr(cpu.registers.pc + 1), 0x05);
+        cpu.write_byte(Addr(cpu.registers.pc + 1), 0x05);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.a, 0x0B, "unexpected result");
         assert_eq!(
@@ -138,7 +138,7 @@ mod tests {
             1,
             4,
         );
-        cpu.memory.write_byte(Addr(cpu.registers.pc + 1), 0x10);
+        cpu.write_byte(Addr(cpu.registers.pc + 1), 0x10);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.a, 0x00);
         assert_eq!(
@@ -152,7 +152,7 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.pc = 0x100;
         let instruction = Instruction::new(Mnemonic::Jr(Location::Const8.imm()), 2, 12);
-        cpu.memory.write_byte(Addr(0x101), 0x05);
+        cpu.write_byte(Addr(0x101), 0x05);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.pc, 0x100 + 2 + 5);
     }
@@ -167,7 +167,7 @@ mod tests {
             2,
             12,
         );
-        cpu.memory.write_byte(Addr(0x101), 0xFD);
+        cpu.write_byte(Addr(0x101), 0xFD);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.pc, 0x100 + 2 - 3);
     }
@@ -182,7 +182,7 @@ mod tests {
             2,
             12,
         );
-        cpu.memory.write_byte(Addr(0x101), 0xFD);
+        cpu.write_byte(Addr(0x101), 0xFD);
         cpu.execute(&instruction);
         assert_eq!(cpu.registers.pc, 0x100 + 2);
     }
@@ -192,13 +192,13 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.pc = 0x100;
         cpu.registers.sp = 0xFFFE;
-        cpu.memory.write_byte(Addr(0x100), 0xCD);
-        cpu.memory.write_word(Addr(0x101), 0x1234);
+        cpu.write_byte(Addr(0x100), 0xCD);
+        cpu.write_word(Addr(0x101), 0x1234);
         cpu.step();
 
         assert_eq!(cpu.registers.pc, 0x1234);
         assert_eq!(cpu.registers.sp, 0xFFFC);
-        assert_eq!(cpu.memory.read_word(Addr(0xFFFC)), 0x103);
+        assert_eq!(cpu.read_word(Addr(0xFFFC)), 0x103);
     }
 
     #[test]
@@ -206,19 +206,19 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.pc = 0x200;
         cpu.registers.sp = 0xFFFE;
-        cpu.memory.write_byte(Addr(0x200), 0xC7);
+        cpu.write_byte(Addr(0x200), 0xC7);
         cpu.step();
 
         assert_eq!(cpu.registers.pc, 0x00);
-        assert_eq!(cpu.memory.read_word(Addr(0xFFFC)), 0x201);
+        assert_eq!(cpu.read_word(Addr(0xFFFC)), 0x201);
     }
 
     #[test]
     fn test_add_immediate_opcode_c6() {
         let mut cpu = setup();
         cpu.registers.a = 1;
-        cpu.memory.write_byte(Addr(0x100), 0xC6);
-        cpu.memory.write_byte(Addr(0x101), 2);
+        cpu.write_byte(Addr(0x100), 0xC6);
+        cpu.write_byte(Addr(0x101), 2);
         cpu.step();
         assert_eq!(cpu.registers.a, 3);
     }
@@ -229,7 +229,7 @@ mod tests {
         cpu.registers.set_hl(0x0FFF);
         cpu.registers.set_bc(0x0001);
         cpu.registers.f = ZERO_FLAG_BITMASK;
-        cpu.memory.write_byte(Addr(0x100), 0x09); // ADD HL,BC
+        cpu.write_byte(Addr(0x100), 0x09); // ADD HL,BC
         cpu.step();
 
         assert_eq!(cpu.registers.hl(), 0x1000);
@@ -241,8 +241,8 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.a = 0x0F;
         cpu.registers.f = CARRY_FLAG_BITMASK;
-        cpu.memory.write_byte(Addr(0x100), 0xCE); // ADC A,d8
-        cpu.memory.write_byte(Addr(0x101), 0x01);
+        cpu.write_byte(Addr(0x100), 0xCE); // ADC A,d8
+        cpu.write_byte(Addr(0x101), 0x01);
         cpu.step();
 
         assert_eq!(cpu.registers.a, 0x11);
@@ -253,8 +253,8 @@ mod tests {
     fn test_sub_immediate_opcode_d6() {
         let mut cpu = setup();
         cpu.registers.a = 0x10;
-        cpu.memory.write_byte(Addr(0x100), 0xD6); // SUB d8
-        cpu.memory.write_byte(Addr(0x101), 0x01);
+        cpu.write_byte(Addr(0x100), 0xD6); // SUB d8
+        cpu.write_byte(Addr(0x101), 0x01);
         cpu.step();
 
         assert_eq!(cpu.registers.a, 0x0F);
@@ -269,8 +269,8 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.a = 0x10;
         cpu.registers.f = CARRY_FLAG_BITMASK;
-        cpu.memory.write_byte(Addr(0x100), 0xDE); // SBC A,d8
-        cpu.memory.write_byte(Addr(0x101), 0x0F);
+        cpu.write_byte(Addr(0x100), 0xDE); // SBC A,d8
+        cpu.write_byte(Addr(0x101), 0x0F);
         cpu.step();
 
         assert_eq!(cpu.registers.a, 0x00);
@@ -285,9 +285,9 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.set_hl(0xC000);
         cpu.registers.a = 0x42;
-        cpu.memory.write_byte(Addr(0x100), 0x22);
+        cpu.write_byte(Addr(0x100), 0x22);
         cpu.step();
-        assert_eq!(cpu.memory.read_byte(Addr(0xC000)), 0x42);
+        assert_eq!(cpu.read_byte(Addr(0xC000)), 0x42);
         assert_eq!(cpu.registers.hl(), 0xC001);
     }
 
@@ -295,8 +295,8 @@ mod tests {
     fn test_ld_a_hld() {
         let mut cpu = setup();
         cpu.registers.set_hl(0xC100);
-        cpu.memory.write_byte(Addr(0xC100), 0x99);
-        cpu.memory.write_byte(Addr(0x100), 0x3A);
+        cpu.write_byte(Addr(0xC100), 0x99);
+        cpu.write_byte(Addr(0x100), 0x3A);
         cpu.step();
         assert_eq!(cpu.registers.a, 0x99);
         assert_eq!(cpu.registers.hl(), 0xC0FF);
@@ -306,13 +306,13 @@ mod tests {
     fn test_ldh_high_memory_roundtrip() {
         let mut cpu = setup();
         cpu.registers.a = 0x77;
-        cpu.memory.write_byte(Addr(0x100), 0xE0);
-        cpu.memory.write_byte(Addr(0x101), 0x42);
+        cpu.write_byte(Addr(0x100), 0xE0);
+        cpu.write_byte(Addr(0x101), 0x42);
         cpu.step();
-        assert_eq!(cpu.memory.read_byte(Addr(0xFF42)), 0x77);
+        assert_eq!(cpu.read_byte(Addr(0xFF42)), 0x77);
 
-        cpu.memory.write_byte(Addr(0x102), 0xF0);
-        cpu.memory.write_byte(Addr(0x103), 0x42);
+        cpu.write_byte(Addr(0x102), 0xF0);
+        cpu.write_byte(Addr(0x103), 0x42);
         cpu.step();
         assert_eq!(cpu.registers.a, 0x77);
     }
@@ -321,8 +321,8 @@ mod tests {
     fn test_add_sp_e8_sets_flags() {
         let mut cpu = setup();
         cpu.registers.sp = 0x00FF;
-        cpu.memory.write_byte(Addr(0x100), 0xE8);
-        cpu.memory.write_byte(Addr(0x101), 0x01);
+        cpu.write_byte(Addr(0x100), 0xE8);
+        cpu.write_byte(Addr(0x101), 0x01);
         cpu.step();
 
         assert_eq!(cpu.registers.sp, 0x0100);
@@ -336,8 +336,8 @@ mod tests {
     fn test_ldhl_sets_flags() {
         let mut cpu = setup();
         cpu.registers.sp = 0x00FF;
-        cpu.memory.write_byte(Addr(0x100), 0xF8);
-        cpu.memory.write_byte(Addr(0x101), 0x01);
+        cpu.write_byte(Addr(0x100), 0xF8);
+        cpu.write_byte(Addr(0x101), 0x01);
         cpu.step();
 
         assert_eq!(cpu.registers.hl(), 0x0100);
@@ -360,8 +360,8 @@ mod tests {
     fn test_cb_rlc_b() {
         let mut cpu = setup();
         cpu.registers.b = 0b1000_0001;
-        cpu.memory.write_byte(Addr(0x100), 0xCB);
-        cpu.memory.write_byte(Addr(0x101), 0x00);
+        cpu.write_byte(Addr(0x100), 0xCB);
+        cpu.write_byte(Addr(0x101), 0x00);
         cpu.step();
 
         assert_eq!(cpu.registers.b, 0b0000_0011);
@@ -374,8 +374,8 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.h = 0;
         cpu.registers.f = CARRY_FLAG_BITMASK;
-        cpu.memory.write_byte(Addr(0x100), 0xCB);
-        cpu.memory.write_byte(Addr(0x101), 0x7C); // BIT 7,H
+        cpu.write_byte(Addr(0x100), 0xCB);
+        cpu.write_byte(Addr(0x101), 0x7C); // BIT 7,H
         cpu.step();
 
         assert_eq!(
@@ -388,20 +388,20 @@ mod tests {
     fn test_cb_res_on_hl_target() {
         let mut cpu = setup();
         cpu.registers.set_hl(0xC000);
-        cpu.memory.write_byte(Addr(0xC000), 0xFF);
-        cpu.memory.write_byte(Addr(0x100), 0xCB);
-        cpu.memory.write_byte(Addr(0x101), 0x86); // RES 0,(HL)
+        cpu.write_byte(Addr(0xC000), 0xFF);
+        cpu.write_byte(Addr(0x100), 0xCB);
+        cpu.write_byte(Addr(0x101), 0x86); // RES 0,(HL)
         cpu.step();
 
-        assert_eq!(cpu.memory.read_byte(Addr(0xC000)), 0xFE);
+        assert_eq!(cpu.read_byte(Addr(0xC000)), 0xFE);
     }
 
     #[test]
     fn test_cb_set_on_a() {
         let mut cpu = setup();
         cpu.registers.a = 0;
-        cpu.memory.write_byte(Addr(0x100), 0xCB);
-        cpu.memory.write_byte(Addr(0x101), 0xDF); // SET 3,A
+        cpu.write_byte(Addr(0x100), 0xCB);
+        cpu.write_byte(Addr(0x101), 0xDF); // SET 3,A
         cpu.step();
 
         assert_eq!(cpu.registers.a, 0x08);
@@ -411,26 +411,26 @@ mod tests {
     fn test_cb_swap_hl() {
         let mut cpu = setup();
         cpu.registers.set_hl(0xC123);
-        cpu.memory.write_byte(Addr(0xC123), 0xF0);
-        cpu.memory.write_byte(Addr(0x100), 0xCB);
-        cpu.memory.write_byte(Addr(0x101), 0x36); // SWAP (HL)
+        cpu.write_byte(Addr(0xC123), 0xF0);
+        cpu.write_byte(Addr(0x100), 0xCB);
+        cpu.write_byte(Addr(0x101), 0x36); // SWAP (HL)
         cpu.step();
 
-        assert_eq!(cpu.memory.read_byte(Addr(0xC123)), 0x0F);
+        assert_eq!(cpu.read_byte(Addr(0xC123)), 0x0F);
         assert_eq!(cpu.registers.f, 0);
     }
 
     #[test]
     fn test_cb_cycles_register_vs_hl_target() {
         let mut cpu = setup();
-        cpu.memory.write_byte(Addr(0x100), 0xCB);
-        cpu.memory.write_byte(Addr(0x101), 0x00); // RLC B
+        cpu.write_byte(Addr(0x100), 0xCB);
+        cpu.write_byte(Addr(0x101), 0x00); // RLC B
         cpu.step();
         assert_eq!(cpu.total_cycles, 8);
 
         cpu.registers.set_hl(0xC000);
-        cpu.memory.write_byte(Addr(0x102), 0xCB);
-        cpu.memory.write_byte(Addr(0x103), 0x06); // RLC (HL)
+        cpu.write_byte(Addr(0x102), 0xCB);
+        cpu.write_byte(Addr(0x103), 0x06); // RLC (HL)
         cpu.step();
         assert_eq!(cpu.total_cycles, 24);
     }
@@ -439,9 +439,9 @@ mod tests {
     fn test_cb_bit_hl_uses_12_cycles() {
         let mut cpu = setup();
         cpu.registers.set_hl(0xC000);
-        cpu.memory.write_byte(Addr(0xC000), 0x80);
-        cpu.memory.write_byte(Addr(0x100), 0xCB);
-        cpu.memory.write_byte(Addr(0x101), 0x7E); // BIT 7,(HL)
+        cpu.write_byte(Addr(0xC000), 0x80);
+        cpu.write_byte(Addr(0x100), 0xCB);
+        cpu.write_byte(Addr(0x101), 0x7E); // BIT 7,(HL)
         cpu.step();
 
         assert_eq!(cpu.total_cycles, 12);
@@ -452,20 +452,20 @@ mod tests {
         let mut cpu = setup();
         cpu.registers.b = 0x01;
         cpu.registers.set_hl(0xC000);
-        cpu.memory.write_byte(Addr(0xC000), 0x80);
+        cpu.write_byte(Addr(0xC000), 0x80);
 
-        cpu.memory.write_byte(Addr(0x100), 0xCB);
-        cpu.memory.write_byte(Addr(0x101), 0x40); // BIT 0,B
+        cpu.write_byte(Addr(0x100), 0xCB);
+        cpu.write_byte(Addr(0x101), 0x40); // BIT 0,B
         cpu.step();
         assert_eq!(cpu.total_cycles, 8);
 
-        cpu.memory.write_byte(Addr(0x102), 0xCB);
-        cpu.memory.write_byte(Addr(0x103), 0x46); // BIT 0,(HL)
+        cpu.write_byte(Addr(0x102), 0xCB);
+        cpu.write_byte(Addr(0x103), 0x46); // BIT 0,(HL)
         cpu.step();
         assert_eq!(cpu.total_cycles, 20);
 
-        cpu.memory.write_byte(Addr(0x104), 0xCB);
-        cpu.memory.write_byte(Addr(0x105), 0x7E); // BIT 7,(HL)
+        cpu.write_byte(Addr(0x104), 0xCB);
+        cpu.write_byte(Addr(0x105), 0x7E); // BIT 7,(HL)
         cpu.step();
         assert_eq!(cpu.total_cycles, 32);
     }
@@ -473,14 +473,14 @@ mod tests {
     #[test]
     fn test_conditional_jr_cycle_selection() {
         let mut cpu = setup();
-        cpu.memory.write_byte(Addr(0x100), 0x20); // JR NZ,e8
-        cpu.memory.write_byte(Addr(0x101), 0x02);
+        cpu.write_byte(Addr(0x100), 0x20); // JR NZ,e8
+        cpu.write_byte(Addr(0x101), 0x02);
         cpu.registers.f = ZERO_FLAG_BITMASK; // NZ false
         cpu.step();
         assert_eq!(cpu.total_cycles, 8);
 
-        cpu.memory.write_byte(Addr(0x102), 0x20); // JR NZ,e8
-        cpu.memory.write_byte(Addr(0x103), 0x02);
+        cpu.write_byte(Addr(0x102), 0x20); // JR NZ,e8
+        cpu.write_byte(Addr(0x103), 0x02);
         cpu.registers.f = 0; // NZ true
         cpu.step();
         assert_eq!(cpu.total_cycles, 20);

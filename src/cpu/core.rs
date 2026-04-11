@@ -13,7 +13,7 @@ use Mnemonic::*;
 static OPCODE_MAP: LazyLock<[Instruction; 256]> = LazyLock::new(map::build_opcode_map);
 
 pub struct Cpu {
-    pub memory: Ram,
+    memory: Ram,
     pub registers: Registers,
     pub total_cycles: u64,
     pending_ime: bool,
@@ -46,6 +46,58 @@ impl Cpu {
     #[allow(dead_code)]
     pub fn cartridge_header(&self) -> Option<&CartridgeHeader> {
         self.memory.cartridge_header()
+    }
+
+    pub fn read_byte(&self, address: Addr) -> u8 {
+        self.memory.read_byte(address)
+    }
+
+    pub fn write_byte(&mut self, address: Addr, value: u8) {
+        self.memory.write_byte(address, value);
+    }
+
+    pub fn read_word(&self, address: Addr) -> u16 {
+        self.memory.read_word(address)
+    }
+
+    pub fn write_word(&mut self, address: Addr, value: u16) {
+        self.memory.write_word(address, value);
+    }
+
+    pub fn tick_timers(&mut self, cycles: u32) -> bool {
+        self.memory.tick(cycles)
+    }
+
+    pub fn memory_slice(&self) -> &[u8] {
+        self.memory.as_slice()
+    }
+
+    pub fn set_ly_raw(&mut self, ly: u8) {
+        self.memory.set_ly_raw(ly);
+    }
+
+    pub fn set_stat_raw(&mut self, stat: u8) {
+        self.memory.set_stat_raw(stat);
+    }
+
+    pub fn set_action_button_pressed(&mut self, bit: u8, pressed: bool) {
+        if pressed {
+            self.memory.action_buttons |= bit;
+        } else {
+            self.memory.action_buttons &= !bit;
+        }
+    }
+
+    pub fn set_direction_button_pressed(&mut self, bit: u8, pressed: bool) {
+        if pressed {
+            self.memory.direction_buttons |= bit;
+        } else {
+            self.memory.direction_buttons &= !bit;
+        }
+    }
+
+    pub fn serial_output(&self) -> &[u8] {
+        &self.memory.serial_output
     }
 
     /// Executes the next instruction, returning the number of cycles consumed

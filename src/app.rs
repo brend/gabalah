@@ -108,17 +108,17 @@ pub fn run_loop(
             for (key, is_action, bit) in buttons {
                 if input.key_pressed(key) {
                     if is_action {
-                        emulator.cpu.memory.action_buttons |= bit;
+                        emulator.cpu.set_action_button_pressed(bit, true);
                     } else {
-                        emulator.cpu.memory.direction_buttons |= bit;
+                        emulator.cpu.set_direction_button_pressed(bit, true);
                     }
                     any_newly_pressed = true;
                 }
                 if input.key_released(key) {
                     if is_action {
-                        emulator.cpu.memory.action_buttons &= !bit;
+                        emulator.cpu.set_action_button_pressed(bit, false);
                     } else {
-                        emulator.cpu.memory.direction_buttons &= !bit;
+                        emulator.cpu.set_direction_button_pressed(bit, false);
                     }
                 }
             }
@@ -242,7 +242,7 @@ pub fn run_headless(cpu: Cpu, frames: usize) -> Vec<u8> {
     for _ in 0..frames {
         emulator.step_frame();
     }
-    emulator.cpu.memory.serial_output.clone()
+    emulator.cpu.serial_output().to_vec()
 }
 
 fn load_window_icon() -> Option<Icon> {
@@ -470,7 +470,7 @@ impl Emulator {
             cycles_this_step += cycles;
             self.tick_lcd(cycles);
 
-            if self.cpu.memory.tick(cycles as u32) {
+            if self.cpu.tick_timers(cycles as u32) {
                 self.cpu.raise_if(0x04);
             }
 
@@ -479,7 +479,7 @@ impl Emulator {
                 cycles_this_step += interrupt_cycles;
                 self.tick_lcd(interrupt_cycles);
 
-                if self.cpu.memory.tick(interrupt_cycles as u32) {
+                if self.cpu.tick_timers(interrupt_cycles as u32) {
                     self.cpu.raise_if(0x04);
                 }
             }
@@ -487,10 +487,10 @@ impl Emulator {
     }
 
     fn tick_lcd(&mut self, cycles: usize) {
-        let lcdc = self.cpu.memory.read_byte(Addr(0xFF40));
+        let lcdc = self.cpu.read_byte(Addr(0xFF40));
         if (lcdc & 0x80) == 0 {
             self.ppu_line_cycles = 0;
-            self.cpu.memory.set_ly_raw(0);
+            self.cpu.set_ly_raw(0);
             self.scanline_latched.fill(false);
             self.update_stat(0, false, false);
             return;
@@ -499,9 +499,9 @@ impl Emulator {
         self.ppu_line_cycles += cycles;
         while self.ppu_line_cycles >= 456 {
             self.ppu_line_cycles -= 456;
-            let ly = self.cpu.memory.read_byte(Addr(0xFF44));
+            let ly = self.cpu.read_byte(Addr(0xFF44));
             let new_ly = if ly >= 153 { 0 } else { ly + 1 };
-            self.cpu.memory.set_ly_raw(new_ly);
+            self.cpu.set_ly_raw(new_ly);
             if new_ly == 0 {
                 self.scanline_latched.fill(false);
             }
@@ -510,7 +510,7 @@ impl Emulator {
             }
         }
 
-        let ly = self.cpu.memory.read_byte(Addr(0xFF44));
+        let ly = self.cpu.read_byte(Addr(0xFF44));
         let mode = if ly >= 144 {
             1
         } else if self.ppu_line_cycles < 80 {
@@ -520,20 +520,20 @@ impl Emulator {
         } else {
             0
         };
-        let lyc = self.cpu.memory.read_byte(Addr(0xFF45));
+        let lyc = self.cpu.read_byte(Addr(0xFF45));
         self.update_stat(mode, ly == lyc, true);
         self.maybe_latch_scanline(ly, mode);
     }
 
     fn update_stat(&mut self, mode: u8, coincidence: bool, allow_interrupt: bool) {
-        let old_stat = self.cpu.memory.read_byte(Addr(0xFF41));
+        let old_stat = self.cpu.read_byte(Addr(0xFF41));
         let old_mode = old_stat & 0x03;
         let old_coincidence = (old_stat & 0x04) != 0;
         let mut new_stat = (old_stat & 0x78) | (mode & 0x03);
         if coincidence {
             new_stat |= 0x04;
         }
-        self.cpu.memory.set_stat_raw(new_stat);
+        self.cpu.set_stat_raw(new_stat);
 
         if !allow_interrupt {
             return;
@@ -575,7 +575,7 @@ impl Emulator {
     }
 
     fn call(&mut self, vector: u16) {
-        self.cpu.memory.write_word(
+        self.cpu.write_word(
             Addr(self.cpu.registers.sp.wrapping_sub(2)),
             self.cpu.registers.pc,
         );
@@ -587,7 +587,7 @@ impl Emulator {
     fn draw(&mut self, screen: &mut [u8]) {
         let mut latches = self.scanline_latches;
         if self.scanline_latched.iter().any(|latched| !latched) {
-            let ram = self.cpu.memory.as_slice();
+            let ram = self.cpu.memory_slice();
             let fallback = renderer::ScanlineRegs {
                 lcdc: ram[0xFF40],
                 scy: ram[0xFF42],
@@ -604,7 +604,7 @@ impl Emulator {
         }
 
         renderer::render_frame_with_scanline_latches(
-            self.cpu.memory.as_slice(),
+            self.cpu.memory_slice(),
             screen,
             &mut self.bg_opaque,
             &latches,
@@ -620,7 +620,7 @@ impl Emulator {
             return;
         }
 
-        let ram = self.cpu.memory.as_slice();
+        let ram = self.cpu.memory_slice();
         self.scanline_latches[line] = renderer::ScanlineRegs {
             lcdc: ram[0xFF40],
             scy: ram[0xFF42],
@@ -675,7 +675,7 @@ impl Emulator {
             ppm.write_all(&px[..3])?;
         }
 
-        let ram = self.cpu.memory.as_slice();
+        let ram = self.cpu.memory_slice();
         fs::write(&vram_path, &ram[0x8000..0xA000])?;
         fs::write(&oam_path, &ram[0xFE00..0xFEA0])?;
 
@@ -715,7 +715,7 @@ mod tests {
         cpu.registers.pc = 0x1234;
         cpu.registers.sp = 0xFFFE;
         cpu.registers.ime = true;
-        cpu.memory.write_byte(Addr(0xFFFF), 0x04); // IE: timer
+        cpu.write_byte(Addr(0xFFFF), 0x04); // IE: timer
         cpu.raise_if(0x04); // IF: timer pending
 
         let mut emulator = Emulator::new(cpu, DebugDumpSettings::default());
@@ -726,7 +726,7 @@ mod tests {
         assert!(!emulator.cpu.registers.ime);
         assert_eq!(emulator.cpu.registers.pc, 0x0050);
         assert_eq!(emulator.cpu.registers.sp, 0xFFFC);
-        assert_eq!(emulator.cpu.memory.read_word(Addr(0xFFFC)), 0x1234);
+        assert_eq!(emulator.cpu.read_word(Addr(0xFFFC)), 0x1234);
         assert_eq!(emulator.cpu.get_if() & 0x04, 0);
     }
 
@@ -734,27 +734,27 @@ mod tests {
     fn bounded_step_counts_interrupt_cycles_for_timer_and_ppu() {
         let mut cpu = Cpu::new();
         cpu.registers.ime = true;
-        cpu.memory.write_byte(Addr(0xFFFF), 0x01); // IE: vblank
+        cpu.write_byte(Addr(0xFFFF), 0x01); // IE: vblank
         cpu.raise_if(0x01); // IF: vblank pending
-        cpu.memory.write_byte(Addr(0xFF07), 0x05); // TAC: enabled, 16-cycle timer
+        cpu.write_byte(Addr(0xFF07), 0x05); // TAC: enabled, 16-cycle timer
 
         let mut emulator = Emulator::new(cpu, DebugDumpSettings::default());
         emulator.step_cycles(4);
 
         assert_eq!(emulator.cpu.total_cycles, 24);
-        assert_eq!(emulator.cpu.memory.read_byte(Addr(0xFF05)), 1);
+        assert_eq!(emulator.cpu.read_byte(Addr(0xFF05)), 1);
         assert_eq!(emulator.ppu_line_cycles, 24);
     }
 
     #[test]
     fn maybe_latch_scanline_captures_registers_once_per_line() {
         let mut cpu = Cpu::new();
-        cpu.memory.write_byte(Addr(0xFF40), 0xB1);
-        cpu.memory.write_byte(Addr(0xFF42), 0x22);
-        cpu.memory.write_byte(Addr(0xFF43), 0x11);
-        cpu.memory.write_byte(Addr(0xFF47), 0xE4);
-        cpu.memory.write_byte(Addr(0xFF4A), 0x05);
-        cpu.memory.write_byte(Addr(0xFF4B), 0x10);
+        cpu.write_byte(Addr(0xFF40), 0xB1);
+        cpu.write_byte(Addr(0xFF42), 0x22);
+        cpu.write_byte(Addr(0xFF43), 0x11);
+        cpu.write_byte(Addr(0xFF47), 0xE4);
+        cpu.write_byte(Addr(0xFF4A), 0x05);
+        cpu.write_byte(Addr(0xFF4B), 0x10);
 
         let mut emulator = Emulator::new(cpu, DebugDumpSettings::default());
         emulator.maybe_latch_scanline(12, 3);
@@ -768,8 +768,8 @@ mod tests {
         assert_eq!(first.wy, 0x05);
         assert_eq!(first.wx, 0x10);
 
-        emulator.cpu.memory.write_byte(Addr(0xFF42), 0x99);
-        emulator.cpu.memory.write_byte(Addr(0xFF43), 0x88);
+        emulator.cpu.write_byte(Addr(0xFF42), 0x99);
+        emulator.cpu.write_byte(Addr(0xFF43), 0x88);
         emulator.maybe_latch_scanline(12, 3);
         let second = emulator.scanline_latches[12];
 
@@ -789,7 +789,7 @@ mod tests {
         let mut emulator = Emulator::new(cpu, DebugDumpSettings::default());
 
         emulator.scanline_latched.fill(true);
-        emulator.cpu.memory.set_ly_raw(153);
+        emulator.cpu.set_ly_raw(153);
         emulator.ppu_line_cycles = 0;
         emulator.tick_lcd(456);
 

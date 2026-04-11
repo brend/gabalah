@@ -1,11 +1,11 @@
 # Project Status
 
-Last updated: 2026-04-10
+Last updated: 2026-04-11
 
 ## What Works
 
 ### CPU
-- Full base instruction set decoded and executed via `opcode_map` (`HashMap<u8, Instruction>`)
+- Full base instruction set decoded and executed via static opcode table (`[Instruction; 256]`)
 - CB-prefixed instructions (rotate/shift, BIT/RES/SET) via `execute_cb()`
 - 8-bit and 16-bit arithmetic/logic with flag handling
 - Stack operations: PUSH, POP, CALL, RET, RETI, RST
@@ -17,6 +17,8 @@ Last updated: 2026-04-10
 ### Memory / IO
 - ROM loaded at `0x0000`; PC starts at `0x0100`
 - Cartridge header metadata parsed on ROM load and exposed through CPU/RAM accessors
+- Runtime cartridge abstraction (`Cartridge`) owns ROM + mapper state and is wired into RAM
+- CPU memory access is encapsulated behind `Cpu` facade methods (no direct field access outside CPU internals)
 - ROM write-protection enabled after ROM load (`0x0000..0x7FFF` writes ignored)
 - Echo RAM mirroring (`0xE000..0xFDFF` <-> `0xC000..0xDDFF`)
 - Unusable area behavior (`0xFEA0..0xFEFF`: reads `0xFF`, writes ignored)
@@ -69,7 +71,8 @@ Last updated: 2026-04-10
 - Backend type changes still require restart (runtime reload applies backend options only)
 
 ### Cartridge / hardware
-- No full cartridge mapper abstraction yet (MBC1 is partial; MBC3/MBC5 not implemented)
+- Cartridge mapper abstraction exists (`RomOnly`, `Mbc1` runtime state)
+- Mapper coverage is partial (MBC1 ROM banking only; MBC3/MBC5 not implemented)
 - MBC1 external RAM banking/enable behavior not yet implemented
 - Header checksum/global checksum are parsed but not yet enforced for ROM rejection
 - No save RAM persistence (`.sav`)
@@ -82,8 +85,9 @@ Last updated: 2026-04-10
 | Area | Tests | Status |
 |---|---|---|
 | CPU core ops | 34 (`tests/ops.rs`) | passing |
-| Memory/IO/timer/joypad/DMA/MBC1 | 27 (`tests/cpu.rs`) | passing |
-| Cartridge header parser + checksum validation | 9 (`tests/cartridge.rs`) | passing |
+| Memory/IO/timer/joypad/DMA/MBC1 | 28 (`tests/cpu.rs`) | passing |
+| Cartridge header parser + runtime mapper behavior | 11 (`tests/cartridge.rs`) | passing |
+| Architecture boundary guard (no external `cpu.memory` access) | 1 (`tests/architecture.rs`) | passing |
 | Renderer (BG/window/OBJ + scanline latch path) | 14 (`src/renderer.rs`) | passing |
 | Graphics config/backend parsing | 10 (`src/config.rs`, `src/ui/mod.rs`) | passing |
 | WGSL shader contract/discovery tests | 5 (`src/ui/wgpu_shader_backend.rs`) | passing |

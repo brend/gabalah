@@ -281,6 +281,25 @@ mod tests {
     }
 
     #[test]
+    fn rom_window_cells_are_backed_by_cartridge_mapping() {
+        let mut rom = vec![0u8; 32 * 1024];
+        rom[0x0143] = 0x00; // DMG mode
+        rom[0x0147] = 0x00; // ROM only
+        rom[0x0148] = 0x00; // 2 ROM banks
+        rom[0x4000] = 0x5A; // bank 1 marker
+
+        let mut ram = Ram::new();
+        ram.load_rom(rom);
+
+        assert_eq!(ram.read_byte(Addr(0x4000)), 0x5A);
+        assert_eq!(
+            ram.as_slice()[0x4000],
+            0x5A,
+            "visible ROM cells should mirror mapper-selected cartridge windows"
+        );
+    }
+
+    #[test]
     fn mbc1_write_to_2000_switches_rom_bank_window() {
         let mut rom = vec![0u8; 4 * 16 * 1024];
         rom[0x0143] = 0x00; // DMG mode

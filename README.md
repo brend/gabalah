@@ -70,6 +70,47 @@ Current access points:
 This currently parses and exposes checksum fields; checksum enforcement/validation is not yet
 wired into ROM load rejection logic.
 
+### Architecture Overview
+
+Current emulator boundaries:
+
+- `Cpu` owns instruction execution state and exposes a focused memory facade.
+- `Ram` owns the 64KB memory cells plus IO/timer behavior.
+- `Cartridge` owns ROM bytes, parsed header metadata, and mapper runtime state.
+- Mapper writes (`0x0000..0x7FFF`) update cartridge state; RAM keeps visible ROM windows in sync for fast reads.
+
+```mermaid
+flowchart LR
+  subgraph APP["Runtime Loop"]
+    UI["Input + Event Loop"]
+    EMU["Emulator (Frame Stepping)"]
+    RENDER["Renderer"]
+  end
+
+  subgraph CPU_SYS["CPU Layer"]
+    CPU["Cpu"]
+    REGS["Registers"]
+    RAM["Ram (64KB + IO/Timers)"]
+  end
+
+  subgraph CART_SYS["Cartridge Layer"]
+    CART["Cartridge"]
+    MAPPER["MapperState: RomOnly | Mbc1"]
+  end
+
+  UI --> EMU
+  EMU --> CPU
+  EMU --> RENDER
+
+  CPU --> REGS
+  CPU -->|"read/write facade methods"| RAM
+
+  RAM -->|"load_rom"| CART
+  RAM -->|"ROM control writes (0x0000..0x7FFF)"| CART
+  CART --> MAPPER
+  CART -->|"sync visible ROM windows"| RAM
+```
+
 ### Graphics Backend Configuration
 
 Gabalah reads optional graphics settings from `config.json` in the project root.

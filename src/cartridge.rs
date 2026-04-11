@@ -1,6 +1,13 @@
 use std::fmt;
 use std::str;
 
+use log::warn;
+
+const ROM_BANK_SIZE: usize = 16 * 1024;
+const FIXED_ROM_END: usize = 0x3FFF;
+const SWITCHABLE_ROM_START: usize = 0x4000;
+const SWITCHABLE_ROM_END: usize = 0x7FFF;
+
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CgbMode {
@@ -474,5 +481,164 @@ impl CartridgeHeader {
         };
 
         Ok(licensee.to_string())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Cartridge {
+    rom: Vec<u8>,
+    header: Option<CartridgeHeader>,
+    mapper: MapperState,
+}
+
+#[derive(Debug, Clone)]
+enum MapperState {
+    RomOnly,
+    Mbc1(Mbc1State),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Mbc1State {
+    rom_bank_low5: u8,
+    bank_high2: u8,
+    mode: u8,
+}
+
+impl Default for Mbc1State {
+    fn default() -> Self {
+        Self {
+            rom_bank_low5: 1,
+            bank_high2: 0,
+            mode: 0,
+        }
+    }
+}
+
+impl Cartridge {
+    pub fn new(rom: Vec<u8>) -> Self {
+        let header = match CartridgeHeader::from_bytes(&rom) {
+            Ok(header) => Some(header),
+            Err(err) => {
+                warn!("Failed to parse cartridge header metadata: {err}");
+                None
+            }
+        };
+
+        let mapper = match header.as_ref().map(|h| h.cartridge_type) {
+            Some(CartridgeType::Mbc1 | CartridgeType::Mbc1Ram | CartridgeType::Mbc1RamBattery) => {
+                MapperState::Mbc1(Mbc1State::default())
+            }
+            _ => MapperState::RomOnly,
+        };
+
+        Self {
+            rom,
+            header,
+            mapper,
+        }
+    }
+
+    pub fn header(&self) -> Option<&CartridgeHeader> {
+        self.header.as_ref()
+    }
+
+    pub fn copy_visible_windows_into(&self, fixed: &mut [u8], switchable: &mut [u8]) {
+        self.copy_bank_into(self.fixed_bank(), fixed);
+        self.copy_bank_into(self.switchable_bank(), switchable);
+    }
+
+    pub fn read_byte(&self, address: u16) -> u8 {
+        let addr = address as usize;
+        if addr > SWITCHABLE_ROM_END {
+            return 0xFF;
+        }
+
+        let (bank, offset) = if addr <= FIXED_ROM_END {
+            (self.fixed_bank(), addr)
+        } else {
+            (self.switchable_bank(), addr - SWITCHABLE_ROM_START)
+        };
+        self.read_bank_byte(bank, offset)
+    }
+
+    pub fn write_rom_control(&mut self, address: u16, value: u8) {
+        let MapperState::Mbc1(state) = &mut self.mapper else {
+            return;
+        };
+
+        match address {
+            0x0000..=0x1FFF => {
+                // MBC1 external RAM enable is intentionally not implemented yet.
+            }
+            0x2000..=0x3FFF => state.rom_bank_low5 = value & 0x1F,
+            0x4000..=0x5FFF => state.bank_high2 = value & 0x03,
+            0x6000..=0x7FFF => state.mode = value & 0x01,
+            _ => {}
+        }
+    }
+
+    fn read_bank_byte(&self, bank: usize, offset: usize) -> u8 {
+        let index = bank.saturating_mul(ROM_BANK_SIZE).saturating_add(offset);
+        self.rom.get(index).copied().unwrap_or(0xFF)
+    }
+
+    fn copy_bank_into(&self, bank: usize, dst: &mut [u8]) {
+        dst.fill(0xFF);
+        let src_start = bank.saturating_mul(ROM_BANK_SIZE);
+        if src_start >= self.rom.len() {
+            return;
+        }
+        let src_end = (src_start + dst.len()).min(self.rom.len());
+        let src = &self.rom[src_start..src_end];
+        dst[..src.len()].copy_from_slice(src);
+    }
+
+    fn fixed_bank(&self) -> usize {
+        let bank_count = self.rom_bank_count();
+        match self.mapper {
+            MapperState::RomOnly => 0,
+            MapperState::Mbc1(state) => {
+                if state.mode == 0 {
+                    0
+                } else {
+                    (((state.bank_high2 & 0x03) as usize) << 5) % bank_count
+                }
+            }
+        }
+    }
+
+    fn switchable_bank(&self) -> usize {
+        let bank_count = self.rom_bank_count();
+        if bank_count <= 1 {
+            return 0;
+        }
+
+        match self.mapper {
+            MapperState::RomOnly => 1 % bank_count,
+            MapperState::Mbc1(state) => {
+                let mut low5 = (state.rom_bank_low5 & 0x1F) as usize;
+                if low5 == 0 {
+                    low5 = 1;
+                }
+                let high2 = (state.bank_high2 & 0x03) as usize;
+                let mut selected = if state.mode == 0 {
+                    (high2 << 5) | low5
+                } else {
+                    low5
+                };
+
+                if (selected & 0x1F) == 0 {
+                    selected |= 0x01;
+                }
+                selected % bank_count
+            }
+        }
+    }
+
+    fn rom_bank_count(&self) -> usize {
+        if let Some(header) = self.header.as_ref() {
+            return header.rom_bank_count.max(1);
+        }
+        self.rom.len().div_ceil(ROM_BANK_SIZE).max(1)
     }
 }
