@@ -31,6 +31,8 @@ const WINDOW_ICON_RGBA: &[u8] = include_bytes!(concat!(
 const CYCLES_PER_FRAME: usize = 70224;
 const FRAME_DURATION: Duration = Duration::from_nanos(16_742_706); // 70224 / 4_194_304 s
 const INTERRUPT_SERVICE_CYCLES: usize = 20;
+const SHADER_NAME_OVERLAY_DURATION: Duration = Duration::from_secs(3);
+const FALLBACK_SHADER_NAME: &str = "builtin-crt";
 
 pub fn run_loop(
     cpu: Cpu,
@@ -62,6 +64,7 @@ pub fn run_loop(
 
     let mut emulator = Emulator::new(cpu, debug_dump_settings);
     let mut last_frame = Instant::now();
+    let mut shader_overlay = ShaderOverlay::default();
 
     let res = event_loop.run(|event, elwt| {
         elwt.set_control_flow(ControlFlow::WaitUntil(last_frame + FRAME_DURATION));
@@ -71,8 +74,10 @@ pub fn run_loop(
             ..
         } = event
         {
-            emulator.draw(graphics.frame_mut());
-            emulator.maybe_dump_frame(graphics.frame_mut());
+            let frame = graphics.frame_mut();
+            emulator.draw(frame);
+            shader_overlay.draw_if_visible(frame);
+            emulator.maybe_dump_frame(frame);
             if let Err(err) = graphics.present() {
                 log_error("graphics.present", err.as_ref());
                 elwt.exit();
@@ -129,9 +134,12 @@ pub fn run_loop(
             {
                 match graphics.cycle_shader_next() {
                     Ok(active_shader_file) => {
-                        if let Err(err) = config::save_active_shader_file(active_shader_file.as_deref()) {
+                        if let Err(err) =
+                            config::save_active_shader_file(active_shader_file.as_deref())
+                        {
                             warn!("Failed to persist active shader in config.json: {err}");
                         }
+                        shader_overlay.show(active_shader_file);
                         window.request_redraw();
                     }
                     Err(err) => {
@@ -146,9 +154,12 @@ pub fn run_loop(
             {
                 match graphics.cycle_shader_prev() {
                     Ok(active_shader_file) => {
-                        if let Err(err) = config::save_active_shader_file(active_shader_file.as_deref()) {
+                        if let Err(err) =
+                            config::save_active_shader_file(active_shader_file.as_deref())
+                        {
                             warn!("Failed to persist active shader in config.json: {err}");
                         }
+                        shader_overlay.show(active_shader_file);
                         window.request_redraw();
                     }
                     Err(err) => {
@@ -249,6 +260,176 @@ fn log_error(method_name: &str, err: &dyn std::error::Error) {
     while let Some(cause) = source {
         error!("  Caused by: {cause}");
         source = cause.source();
+    }
+}
+
+#[derive(Default)]
+struct ShaderOverlay {
+    text: Option<String>,
+    visible_until: Option<Instant>,
+}
+
+impl ShaderOverlay {
+    fn show(&mut self, active_shader_file: Option<String>) {
+        self.text = Some(active_shader_file.unwrap_or_else(|| FALLBACK_SHADER_NAME.to_string()));
+        self.visible_until = Some(Instant::now() + SHADER_NAME_OVERLAY_DURATION);
+    }
+
+    fn draw_if_visible(&mut self, screen: &mut [u8]) {
+        let now = Instant::now();
+        let (Some(text), Some(until)) = (self.text.as_deref(), self.visible_until) else {
+            return;
+        };
+        if now > until {
+            self.text = None;
+            self.visible_until = None;
+            return;
+        }
+        draw_overlay_text(screen, text);
+    }
+}
+
+fn draw_overlay_text(screen: &mut [u8], text: &str) {
+    if screen.len() != (WIDTH * HEIGHT * 4) as usize {
+        return;
+    }
+    let margin_x = 4u32;
+    let margin_y = 4u32;
+    let char_w = 5u32;
+    let char_h = 7u32;
+    let spacing = 1u32;
+    let max_chars = ((WIDTH - margin_x * 2) / (char_w + spacing)) as usize;
+    let text = clip_overlay_text(text, max_chars);
+    if text.is_empty() {
+        return;
+    }
+
+    let text_width = text.chars().count() as u32 * (char_w + spacing) - spacing;
+    let bg_w = text_width + 6;
+    let bg_h = char_h + 6;
+    fill_rect_blend(
+        screen,
+        margin_x.saturating_sub(2),
+        margin_y.saturating_sub(2),
+        bg_w,
+        bg_h,
+        [0, 0, 0],
+        180,
+    );
+
+    let mut x = margin_x;
+    for ch in text.chars() {
+        draw_char_5x7(screen, x + 1, margin_y + 1, ch, [0, 0, 0], 190);
+        draw_char_5x7(screen, x, margin_y, ch, [244, 252, 244], 255);
+        x += char_w + spacing;
+    }
+}
+
+fn clip_overlay_text(text: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    let upper = text.to_ascii_uppercase();
+    let upper_len = upper.chars().count();
+    if upper_len <= max_chars {
+        return upper;
+    }
+    if max_chars <= 3 {
+        return ".".repeat(max_chars);
+    }
+    let mut clipped: String = upper.chars().take(max_chars - 3).collect();
+    clipped.push_str("...");
+    clipped
+}
+
+fn fill_rect_blend(
+    screen: &mut [u8],
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    color: [u8; 3],
+    alpha: u8,
+) {
+    let x_end = (x + width).min(WIDTH);
+    let y_end = (y + height).min(HEIGHT);
+    for py in y..y_end {
+        for px in x..x_end {
+            blend_pixel(screen, px, py, color, alpha);
+        }
+    }
+}
+
+fn draw_char_5x7(screen: &mut [u8], x: u32, y: u32, ch: char, color: [u8; 3], alpha: u8) {
+    let glyph = glyph_5x7(ch);
+    for (row, bits) in glyph.into_iter().enumerate() {
+        for col in 0..5u32 {
+            if (bits & (1 << (4 - col))) != 0 {
+                blend_pixel(screen, x + col, y + row as u32, color, alpha);
+            }
+        }
+    }
+}
+
+fn blend_pixel(screen: &mut [u8], x: u32, y: u32, color: [u8; 3], alpha: u8) {
+    if x >= WIDTH || y >= HEIGHT {
+        return;
+    }
+    let idx = ((y * WIDTH + x) * 4) as usize;
+    for c in 0..3 {
+        let dst = screen[idx + c] as u16;
+        let src = color[c] as u16;
+        let a = alpha as u16;
+        let blended = (dst * (255 - a) + src * a) / 255;
+        screen[idx + c] = blended as u8;
+    }
+    screen[idx + 3] = 0xFF;
+}
+
+fn glyph_5x7(ch: char) -> [u8; 7] {
+    match ch {
+        'A' => [0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11],
+        'B' => [0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E],
+        'C' => [0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E],
+        'D' => [0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E],
+        'E' => [0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F],
+        'F' => [0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10],
+        'G' => [0x0E, 0x11, 0x10, 0x10, 0x13, 0x11, 0x0F],
+        'H' => [0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11],
+        'I' => [0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x1F],
+        'J' => [0x01, 0x01, 0x01, 0x01, 0x11, 0x11, 0x0E],
+        'K' => [0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11],
+        'L' => [0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F],
+        'M' => [0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11],
+        'N' => [0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11],
+        'O' => [0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E],
+        'P' => [0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10],
+        'Q' => [0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D],
+        'R' => [0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11],
+        'S' => [0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E],
+        'T' => [0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04],
+        'U' => [0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E],
+        'V' => [0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04],
+        'W' => [0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A],
+        'X' => [0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11],
+        'Y' => [0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04],
+        'Z' => [0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F],
+        '0' => [0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E],
+        '1' => [0x04, 0x0C, 0x14, 0x04, 0x04, 0x04, 0x1F],
+        '2' => [0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F],
+        '3' => [0x1E, 0x01, 0x01, 0x06, 0x01, 0x01, 0x1E],
+        '4' => [0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02],
+        '5' => [0x1F, 0x10, 0x10, 0x1E, 0x01, 0x01, 0x1E],
+        '6' => [0x0E, 0x10, 0x10, 0x1E, 0x11, 0x11, 0x0E],
+        '7' => [0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08],
+        '8' => [0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E],
+        '9' => [0x0E, 0x11, 0x11, 0x0F, 0x01, 0x01, 0x0E],
+        '.' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C],
+        '_' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F],
+        '-' => [0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00],
+        '/' => [0x01, 0x02, 0x02, 0x04, 0x08, 0x08, 0x10],
+        ' ' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        _ => [0x0E, 0x11, 0x01, 0x02, 0x04, 0x00, 0x04], // '?'
     }
 }
 
@@ -615,6 +796,24 @@ mod tests {
         assert!(
             emulator.scanline_latched.iter().all(|latched| !latched),
             "all scanline latches should reset when LY wraps to 0"
+        );
+    }
+
+    #[test]
+    fn clip_overlay_text_uppercases_and_truncates() {
+        let clipped = clip_overlay_text("jelly_tiles.wgsl", 10);
+        assert_eq!(clipped, "JELLY_T...");
+    }
+
+    #[test]
+    fn draw_overlay_text_writes_visible_pixels() {
+        let mut frame = vec![0u8; (WIDTH * HEIGHT * 4) as usize];
+        draw_overlay_text(&mut frame, "jelly_tiles.wgsl");
+        assert!(
+            frame
+                .chunks_exact(4)
+                .any(|px| px[0] != 0 || px[1] != 0 || px[2] != 0),
+            "overlay text should write at least one non-black pixel"
         );
     }
 }

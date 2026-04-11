@@ -706,6 +706,10 @@ mod tests {
     use std::path::PathBuf;
     use std::process;
     use std::time::{SystemTime, UNIX_EPOCH};
+    const JELLY_TILES_SHADER_SOURCE: &str = include_str!("../../shaders/jelly_tiles.wgsl");
+    const COMIC_HALFTONE_POP_SHADER_SOURCE: &str =
+        include_str!("../../shaders/comic_halftone_pop.wgsl");
+    const CRIMSON_CLUSTER_SHADER_SOURCE: &str = include_str!("../../shaders/crimson_cluster.wgsl");
 
     #[test]
     fn crt_wgsl_shader_parses() {
@@ -718,6 +722,24 @@ mod tests {
     fn validates_builtin_shader_contract() {
         validate_shader_contract(BUILTIN_SHADER_SOURCE)
             .expect("builtin shader should satisfy runtime contract");
+    }
+
+    #[test]
+    fn validates_jelly_tiles_shader_contract() {
+        validate_shader_contract(JELLY_TILES_SHADER_SOURCE)
+            .expect("jelly_tiles shader should satisfy runtime contract");
+    }
+
+    #[test]
+    fn validates_comic_halftone_pop_shader_contract() {
+        validate_shader_contract(COMIC_HALFTONE_POP_SHADER_SOURCE)
+            .expect("comic_halftone_pop shader should satisfy runtime contract");
+    }
+
+    #[test]
+    fn validates_crimson_cluster_shader_contract() {
+        validate_shader_contract(CRIMSON_CLUSTER_SHADER_SOURCE)
+            .expect("crimson_cluster shader should satisfy runtime contract");
     }
 
     #[test]

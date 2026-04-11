@@ -147,9 +147,12 @@ names include letters, digits, arrows, `enter`, `escape`, `tab`, `space`, `left_
 
 Bundled runtime shaders:
 
+- `crimson_cluster.wgsl`: concentrates red in zones with high local dark-pixel density
 - `crt.wgsl`: dedicated CRT pass (curvature + scanlines + phosphor/flicker)
+- `comic_halftone_pop.wgsl`: halftone dots + animated ink-outline comic treatment
 - `funk_spectrum.wgsl`: aggressive non-CRT color remap
 - `heart_pixels.wgsl`: renders each source pixel as a tiny heart shape
+- `jelly_tiles.wgsl`: rounded gel-like pixel tiles with subtle wobble and specular shine
 - `no_effect.wgsl`: passthrough (use this to effectively disable shader effects)
 - `wiggle_ripple.wgsl`: per-pixel ripple displacement with a soft, pleasing wobble
 
