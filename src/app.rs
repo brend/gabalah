@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 use super::renderer;
+use crate::audio::{self, AudioSink};
 use crate::config;
 use crate::config::{Controls, DebugDumpSettings};
 use crate::cpu::Cpu;
@@ -459,6 +460,8 @@ fn glyph_5x7(ch: char) -> [u8; 7] {
 
 struct Emulator {
     cpu: Cpu,
+    audio_sink: Box<dyn AudioSink>,
+    audio_samples: Vec<[f32; 2]>,
     ppu_line_cycles: usize,
     bg_opaque: Vec<bool>,
     scanline_latches: [renderer::ScanlineRegs; HEIGHT as usize],
@@ -472,6 +475,8 @@ impl Emulator {
     fn new(cpu: Cpu, debug_dump_settings: DebugDumpSettings) -> Self {
         Self {
             cpu,
+            audio_sink: audio::create_default_sink(),
+            audio_samples: Vec::with_capacity(1024),
             ppu_line_cycles: 0,
             bg_opaque: vec![false; (WIDTH * HEIGHT) as usize],
             scanline_latches: [renderer::ScanlineRegs::default(); HEIGHT as usize],
@@ -493,6 +498,7 @@ impl Emulator {
             let cycles = self.cpu.step();
             cycles_this_step += cycles;
             self.tick_lcd(cycles);
+            self.cpu.tick_apu(cycles as u32, &mut self.audio_samples);
 
             if self.cpu.tick_timers(cycles as u32) {
                 self.cpu.raise_if(0x04);
@@ -502,11 +508,17 @@ impl Emulator {
                 let interrupt_cycles = self.interrupt();
                 cycles_this_step += interrupt_cycles;
                 self.tick_lcd(interrupt_cycles);
+                self.cpu
+                    .tick_apu(interrupt_cycles as u32, &mut self.audio_samples);
 
                 if self.cpu.tick_timers(interrupt_cycles as u32) {
                     self.cpu.raise_if(0x04);
                 }
             }
+        }
+        if !self.audio_samples.is_empty() {
+            self.audio_sink.push_samples(&self.audio_samples);
+            self.audio_samples.clear();
         }
     }
 

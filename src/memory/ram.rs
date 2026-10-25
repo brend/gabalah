@@ -1,3 +1,4 @@
+use crate::apu::{Apu, StereoSample};
 use crate::cartridge::{Cartridge, CartridgeHeader};
 
 const VISIBLE_ROM_END: usize = 0x7FFF;
@@ -138,6 +139,7 @@ pub struct Ram {
     tima_counter: u32,
     /// Bytes captured from serial transfers (0xFF01 at each 0xFF02 write with bit 7 set)
     pub serial_output: Vec<u8>,
+    apu: Apu,
 }
 
 impl Ram {
@@ -152,6 +154,7 @@ impl Ram {
             div_counter: 0x183A,
             tima_counter: 0,
             serial_output: Vec::new(),
+            apu: Apu::new(),
         };
         ram.cells[0xFF07] = 0xF8; // TAC: upper bits set, timer disabled
         ram.cells[0xFF0F] = 0xE1; // IF: VBlank + upper unused bits set
@@ -160,6 +163,7 @@ impl Ram {
         ram.cells[0xFF47] = 0xFC; // BGP: shades 3,3,2,0
         ram.cells[0xFF48] = 0xFF; // OBP0
         ram.cells[0xFF49] = 0xFF; // OBP1
+        ram.sync_apu_register_image();
         ram
     }
 
@@ -211,6 +215,15 @@ impl Ram {
         if address.0 == 0xFF44 {
             // LY resets to zero on write.
             self.cells[0xFF44] = 0;
+            return;
+        }
+        if Apu::handles_address(address.0) {
+            self.apu.write_register(address.0, value);
+            if address.0 == 0xFF26 {
+                self.sync_apu_register_image();
+            } else {
+                self.cells[addr] = self.apu.read_register(address.0);
+            }
             return;
         }
         // Cartridge ROM area. After a cartridge is loaded, writes are delegated to mapper control.
@@ -269,6 +282,9 @@ impl Ram {
         if address.0 == 0xFF04 {
             return (self.div_counter >> 8) as u8;
         }
+        if Apu::handles_address(address.0) {
+            return self.apu.read_register(address.0);
+        }
         if (0xE000..=0xFDFF).contains(&addr) {
             return self.cells[addr - 0x2000];
         }
@@ -308,6 +324,11 @@ impl Ram {
             }
         }
         overflow
+    }
+
+    pub fn tick_apu(&mut self, cycles: u32, output: &mut Vec<StereoSample>) {
+        self.apu.tick(cycles, output);
+        self.cells[0xFF26] = self.apu.read_register(0xFF26);
     }
 
     pub fn read_word(&self, address: Addr) -> u16 {
@@ -370,5 +391,11 @@ impl Ram {
     /// Sets STAT directly (used by PPU timing logic).
     pub fn set_stat_raw(&mut self, stat: u8) {
         self.cells[0xFF41] = 0x80 | (stat & 0x7F);
+    }
+
+    fn sync_apu_register_image(&mut self) {
+        for address in 0xFF10..=0xFF3F {
+            self.cells[address as usize] = self.apu.read_register(address);
+        }
     }
 }

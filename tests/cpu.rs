@@ -269,6 +269,59 @@ mod tests {
         );
     }
 
+    // --- APU scaffold ---
+
+    #[test]
+    fn apu_register_round_trip_uses_apu_plumbing() {
+        let mut ram = Ram::new();
+        ram.write_byte(Addr(0xFF12), 0x9C);
+        assert_eq!(ram.read_byte(Addr(0xFF12)), 0x9C);
+    }
+
+    #[test]
+    fn apu_power_off_clears_audio_registers_and_blocks_non_wave_writes() {
+        let mut ram = Ram::new();
+        ram.write_byte(Addr(0xFF12), 0x9C);
+        ram.write_byte(Addr(0xFF26), 0x00); // NR52: power off
+
+        assert_eq!(
+            ram.read_byte(Addr(0xFF26)) & 0x80,
+            0,
+            "NR52 power bit should be clear after power-off"
+        );
+        assert_eq!(
+            ram.read_byte(Addr(0xFF12)),
+            0,
+            "channel registers should clear when powering off"
+        );
+
+        ram.write_byte(Addr(0xFF12), 0x77);
+        assert_eq!(
+            ram.read_byte(Addr(0xFF12)),
+            0,
+            "non-wave APU writes should be ignored while powered off"
+        );
+    }
+
+    #[test]
+    fn apu_wave_ram_writes_still_work_when_powered_off() {
+        let mut ram = Ram::new();
+        ram.write_byte(Addr(0xFF26), 0x00); // NR52: power off
+        ram.write_byte(Addr(0xFF30), 0x5A);
+        assert_eq!(ram.read_byte(Addr(0xFF30)), 0x5A);
+    }
+
+    #[test]
+    fn apu_tick_emits_expected_silent_sample_count() {
+        let mut ram = Ram::new();
+        let mut samples = Vec::new();
+        ram.tick_apu(4_194_304, &mut samples);
+
+        assert_eq!(samples.len(), 48_000);
+        assert_eq!(samples[0], [0.0, 0.0]);
+        assert_eq!(samples[47_999], [0.0, 0.0]);
+    }
+
     // --- Memory map behavior ---
 
     fn runtime_mbc1_rom_with_ram(cartridge_type: u8, ram_size_code: u8) -> Vec<u8> {

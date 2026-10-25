@@ -5,6 +5,7 @@ use super::ops::{CycleSpec, Instruction};
 use super::{
     alu, map, Mnemonic, CARRY_FLAG_BITMASK, HALF_CARRY_FLAG_BITMASK, SUBTRACTION_FLAG_BITMASK,
 };
+use crate::apu::StereoSample;
 use crate::cartridge::CartridgeHeader;
 use crate::memory::{Addr, Ram, Registers};
 
@@ -80,6 +81,10 @@ impl Cpu {
 
     pub fn tick_timers(&mut self, cycles: u32) -> bool {
         self.memory.tick(cycles)
+    }
+
+    pub fn tick_apu(&mut self, cycles: u32, output: &mut Vec<StereoSample>) {
+        self.memory.tick_apu(cycles, output);
     }
 
     pub fn memory_slice(&self) -> &[u8] {

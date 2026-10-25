@@ -1,5 +1,8 @@
 #[cfg(feature = "frontend")]
 pub mod app;
+pub mod apu;
+#[cfg(feature = "frontend")]
+pub mod audio;
 pub mod cartridge;
 #[cfg(feature = "frontend")]
 pub mod config;
